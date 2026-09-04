@@ -4,20 +4,7 @@ local RunService = game:GetService("RunService")
 local Player = Players.LocalPlayer
 
 local DATA = {
-    Maps = {
-        {
-            Name = "Demon Village",
-            NPCs = {
-                {
-                    Name = "Tanjiro",
-                    Positions = {
-                        Vector3.new(26167.792, 141.43, -3768.27),
-                        Vector3.new(26180, 141.43, -3780)
-                    }
-                }
-            }
-        }
-    }
+    Maps = {}
 }
 
 local CONFIG = {
@@ -26,8 +13,8 @@ local CONFIG = {
     Offset = Vector3.new(0, 3, 0)
 }
 
-local selectedMap
-local selectedNPC
+local selectedMap nil
+local selectedNPC nil
 local farming = false
 
 local function create(class, props)
