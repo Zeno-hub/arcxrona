@@ -23,7 +23,7 @@ local function round(obj, r)
 	create("UICorner", { CornerRadius = UDim.new(0, r or 8), Parent = obj })
 end
 
--- ================= DATA / LOGIC (dari AnimeSwords) =================
+-- ================= DATA / LOGIC =================
 local DATA = { Maps = {} }
 local selectedMap, selectedNPC
 local farming = false
@@ -79,7 +79,6 @@ local header = create("Frame", {
 	BackgroundColor3 = COLOR_HEADER,
 	BorderSizePixel = 0,
 	Active = true,
-	Draggable = false, -- drag manual di bawah (biar ga bentrok sama tombol)
 	ZIndex = 2,
 	Parent = main
 })
@@ -129,18 +128,32 @@ create("TextLabel", {
 	Parent = header
 })
 
-local adminBtn = create("TextButton", {
+-- Tombol Main / Admin (tab switch, BUKAN buka window baru)
+local mainTabBtn = create("TextButton", {
 	Size = UDim2.new(0, 30, 0, 30),
 	Position = UDim2.new(1, -76, 0, 8),
 	BackgroundColor3 = COLOR_ACCENT,
-	Text = "⚙",
+	Text = "☰",
 	Font = Enum.Font.GothamBold,
-	TextSize = 18,
+	TextSize = 16,
 	TextColor3 = COLOR_TEXT,
 	ZIndex = 3,
 	Parent = header
 })
-round(adminBtn, 8)
+round(mainTabBtn, 8)
+
+local adminTabBtn = create("TextButton", {
+	Size = UDim2.new(0, 30, 0, 30),
+	Position = UDim2.new(1, -114, 0, 8),
+	BackgroundColor3 = Color3.fromRGB(45, 45, 52),
+	Text = "⚙",
+	Font = Enum.Font.GothamBold,
+	TextSize = 16,
+	TextColor3 = COLOR_TEXT,
+	ZIndex = 3,
+	Parent = header
+})
+round(adminTabBtn, 8)
 
 local closeBtn = create("TextButton", {
 	Size = UDim2.new(0, 30, 0, 30),
@@ -155,7 +168,7 @@ local closeBtn = create("TextButton", {
 })
 round(closeBtn, 8)
 
--- drag manual pake header (biar tombol admin/close ga ikut drag conflict)
+-- drag via header
 do
 	local UIS = game:GetService("UserInputService")
 	local dragging, dragInput, dragStart, startPos
@@ -211,11 +224,12 @@ local mainTab = create("TextButton", {
 })
 round(mainTab, 8)
 
--- ================= MAIN PAGE (fitur farm) =================
+-- ================= MAIN PAGE =================
 local mainPage = create("Frame", {
 	Size = UDim2.new(1, -20, 1, -54),
 	Position = UDim2.new(0, 10, 0, 54),
 	BackgroundTransparency = 1,
+	Visible = true,
 	Parent = body
 })
 
@@ -271,100 +285,38 @@ local tpBtn = makeButton(mainPage, "TELEPORT", UDim2.fromOffset(105, 34), UDim2.
 local farmBtn = makeButton(mainPage, "FARM: OFF", UDim2.fromOffset(105, 34), UDim2.fromOffset(112, 190))
 farmBtn.BackgroundColor3 = COLOR_ACCENT
 
--- ================= ADMIN PAGE (popup, dibuka via gear) =================
+-- ================= ADMIN PAGE (nempel di body yang sama, bukan window baru) =================
 local adminPage = create("Frame", {
-	Size = UDim2.new(0, 320, 0, 420),
-	Position = UDim2.new(0.5, -160, 0.5, -210),
-	BackgroundColor3 = COLOR_BG,
-	BorderSizePixel = 0,
-	Visible = false,
-	ZIndex = 10,
-	Parent = gui
-})
-round(adminPage, 14)
-
-local adminHeader = create("Frame", {
-	Size = UDim2.new(1, 0, 0, 40),
-	BackgroundColor3 = COLOR_HEADER,
-	BorderSizePixel = 0,
-	Active = true,
-	ZIndex = 10,
-	Parent = adminPage
-})
-round(adminHeader, 14)
-create("Frame", {
-	Size = UDim2.new(1, 0, 0, 14), Position = UDim2.new(0, 0, 1, -14),
-	BackgroundColor3 = COLOR_HEADER, BorderSizePixel = 0, ZIndex = 10, Parent = adminHeader
-})
-create("TextLabel", {
-	Size = UDim2.new(1, -40, 1, 0), Position = UDim2.fromOffset(12, 0), BackgroundTransparency = 1,
-	Text = "ADMIN PANEL", Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = COLOR_TEXT,
-	TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 11, Parent = adminHeader
-})
-local adminCloseBtn = create("TextButton", {
-	Size = UDim2.fromOffset(28, 28), Position = UDim2.new(1, -34, 0, 6),
-	BackgroundColor3 = Color3.fromRGB(60, 20, 30), Text = "X", Font = Enum.Font.GothamBold,
-	TextSize = 14, TextColor3 = COLOR_TEXT, ZIndex = 11, Parent = adminHeader
-})
-round(adminCloseBtn, 8)
-
-do
-	local UIS = game:GetService("UserInputService")
-	local dragging, dragInput, dragStart, startPos
-	adminHeader.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			dragStart = input.Position
-			startPos = adminPage.Position
-			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then dragging = false end
-			end)
-		end
-	end)
-	adminHeader.InputChanged:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-			dragInput = input
-		end
-	end)
-	UIS.InputChanged:Connect(function(input)
-		if input == dragInput and dragging then
-			local delta = input.Position - dragStart
-			adminPage.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-		end
-	end)
-end
-
-local adminBody = create("Frame", {
-	Size = UDim2.new(1, -16, 1, -48),
-	Position = UDim2.fromOffset(8, 44),
+	Size = UDim2.new(1, -20, 1, -54),
+	Position = UDim2.new(0, 10, 0, 54),
 	BackgroundTransparency = 1,
-	ZIndex = 10,
-	Parent = adminPage
+	Visible = false,
+	Parent = body
 })
 
-local mapNameBox = makeBox(adminBody, "Map name", UDim2.fromOffset(150, 30), UDim2.fromOffset(0, 0))
-local mapOrderBox = makeBox(adminBody, "Order", UDim2.fromOffset(55, 30), UDim2.fromOffset(156, 0))
-local addMapBtn = makeButton(adminBody, "+ MAP", UDim2.fromOffset(61, 30), UDim2.fromOffset(217, 0))
+local mapNameBox = makeBox(adminPage, "Map name", UDim2.fromOffset(150, 30), UDim2.fromOffset(0, 0))
+local mapOrderBox = makeBox(adminPage, "Order", UDim2.fromOffset(55, 30), UDim2.fromOffset(156, 0))
+local addMapBtn = makeButton(adminPage, "+ MAP", UDim2.fromOffset(61, 30), UDim2.fromOffset(217, 0))
 
-local npcNameBox = makeBox(adminBody, "NPC / Mob", UDim2.fromOffset(150, 30), UDim2.fromOffset(0, 38))
-local addNPCBtn = makeButton(adminBody, "+ NPC", UDim2.fromOffset(128, 30), UDim2.fromOffset(156, 38))
+local npcNameBox = makeBox(adminPage, "NPC / Mob", UDim2.fromOffset(150, 30), UDim2.fromOffset(0, 38))
+local addNPCBtn = makeButton(adminPage, "+ NPC", UDim2.fromOffset(128, 30), UDim2.fromOffset(156, 38))
 
 local adminStatus = create("TextLabel", {
-	Parent = adminBody, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 74),
+	Parent = adminPage, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 74),
 	BackgroundTransparency = 1, Text = "Pilih Map dan NPC", TextColor3 = COLOR_SUBTEXT,
 	Font = Enum.Font.Gotham, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left
 })
 
 local positionList = create("ScrollingFrame", {
-	Parent = adminBody, Size = UDim2.new(1, 0, 0, 145), Position = UDim2.fromOffset(0, 96),
+	Parent = adminPage, Size = UDim2.new(1, 0, 0, 145), Position = UDim2.fromOffset(0, 96),
 	BackgroundColor3 = COLOR_PANEL, BorderSizePixel = 0, ScrollBarThickness = 3, CanvasSize = UDim2.new()
 })
 round(positionList, 6)
 local positionLayout = create("UIListLayout", { Padding = UDim.new(0, 3), Parent = positionList })
 
-local addPositionBtn = makeButton(adminBody, "+ POSITION", UDim2.fromOffset(92, 30), UDim2.fromOffset(0, 245))
-local saveBtn = makeButton(adminBody, "SAVE", UDim2.fromOffset(92, 30), UDim2.fromOffset(98, 245))
-local deleteBtn = makeButton(adminBody, "DELETE", UDim2.fromOffset(92, 30), UDim2.fromOffset(196, 245))
+local addPositionBtn = makeButton(adminPage, "+ POSITION", UDim2.fromOffset(92, 30), UDim2.fromOffset(0, 245))
+local saveBtn = makeButton(adminPage, "SAVE", UDim2.fromOffset(92, 30), UDim2.fromOffset(98, 245))
+local deleteBtn = makeButton(adminPage, "DELETE", UDim2.fromOffset(92, 30), UDim2.fromOffset(196, 245))
 
 -- ================= FLOATING TOGGLE =================
 local floatBtn = create("TextButton", {
@@ -402,7 +354,7 @@ do
 	end)
 end
 
--- ================= LOGIC (sama kayak script lama, cuma refer ke elemen baru) =================
+-- ================= LOGIC =================
 local function clearList(container, layout)
 	for _, child in ipairs(container:GetChildren()) do
 		if child ~= layout then child:Destroy() end
@@ -423,24 +375,22 @@ local function refreshPositions()
 	for index, position in ipairs(selectedNPC.Positions) do
 		local row = create("Frame", {
 			Parent = positionList, Size = UDim2.new(1, -6, 0, 40),
-			BackgroundColor3 = Color3.fromRGB(30, 30, 36), BorderSizePixel = 0, ZIndex = 10
+			BackgroundColor3 = Color3.fromRGB(30, 30, 36), BorderSizePixel = 0
 		})
 		round(row, 5)
 
 		create("TextLabel", {
 			Parent = row, Size = UDim2.fromOffset(20, 40), Position = UDim2.fromOffset(4, 0),
 			BackgroundTransparency = 1, Text = tostring(index), TextColor3 = COLOR_SUBTEXT,
-			Font = Enum.Font.GothamBold, TextSize = 10, ZIndex = 10
+			Font = Enum.Font.GothamBold, TextSize = 10
 		})
 
 		local x = makeBox(row, "X", UDim2.fromOffset(68, 26), UDim2.fromOffset(27, 7))
 		local y = makeBox(row, "Y", UDim2.fromOffset(68, 26), UDim2.fromOffset(99, 7))
 		local z = makeBox(row, "Z", UDim2.fromOffset(68, 26), UDim2.fromOffset(171, 7))
-		x.ZIndex, y.ZIndex, z.ZIndex = 10, 10, 10
 		x.Text, y.Text, z.Text = tostring(position.X), tostring(position.Y), tostring(position.Z)
 
 		local remove = makeButton(row, "×", UDim2.fromOffset(30, 26), UDim2.fromOffset(243, 7))
-		remove.ZIndex = 10
 		remove.MouseButton1Click:Connect(function()
 			if selectedNPC then
 				table.remove(selectedNPC.Positions, index)
@@ -598,7 +548,21 @@ deleteBtn.MouseButton1Click:Connect(function()
 	updateStatus()
 end)
 
--- ================= TOGGLE / ADMIN OPEN LOGIC =================
+-- ================= TAB & TOGGLE LOGIC =================
+mainTabBtn.MouseButton1Click:Connect(function()
+	mainPage.Visible = true
+	adminPage.Visible = false
+	mainTabBtn.BackgroundColor3 = COLOR_ACCENT
+	adminTabBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
+end)
+
+adminTabBtn.MouseButton1Click:Connect(function()
+	mainPage.Visible = false
+	adminPage.Visible = true
+	adminTabBtn.BackgroundColor3 = COLOR_ACCENT
+	mainTabBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 52)
+end)
+
 closeBtn.MouseButton1Click:Connect(function()
 	main.Visible = false
 	floatBtn.Visible = true
@@ -607,14 +571,6 @@ end)
 floatBtn.MouseButton1Click:Connect(function()
 	main.Visible = true
 	floatBtn.Visible = false
-end)
-
-adminBtn.MouseButton1Click:Connect(function()
-	adminPage.Visible = true
-end)
-
-adminCloseBtn.MouseButton1Click:Connect(function()
-	adminPage.Visible = false
 end)
 
 refreshMaps()
