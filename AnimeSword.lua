@@ -1,271 +1,604 @@
--- LocalScript, taro di StarterGui
 local Players = game:GetService("Players")
 local player = Players.LocalPlayer
-local PlayerGui = player:WaitForChild("PlayerGui")
+local playerGui = player:WaitForChild("PlayerGui")
 
--- ================= COLORS =================
+local old = playerGui:FindFirstChild("ArcheronGUI")
+if old then old:Destroy() end
+
+-- ================= THEME =================
 local COLOR_BG = Color3.fromRGB(15, 15, 20)
 local COLOR_HEADER = Color3.fromRGB(35, 15, 60)
 local COLOR_ACCENT = Color3.fromRGB(150, 60, 255)
+local COLOR_PANEL = Color3.fromRGB(24, 24, 29)
 local COLOR_TEXT = Color3.fromRGB(240, 240, 245)
 local COLOR_SUBTEXT = Color3.fromRGB(180, 160, 220)
 
--- ================= ROOT =================
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "ArcheronGUI"
-screenGui.ResetOnSpawn = false
-screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-screenGui.Parent = PlayerGui
-
--- ================= MAIN CONTAINER =================
-local main = Instance.new("Frame")
-main.Name = "Main"
-main.Size = UDim2.new(0, 380, 0, 460)
-main.Position = UDim2.new(0.5, -190, 0.5, -230)
-main.BackgroundColor3 = COLOR_BG
-main.BorderSizePixel = 0
-main.ClipsDescendants = true
-main.Parent = screenGui
-
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 14)
-mainCorner.Parent = main
-
--- ================= HEADER =================
-local header = Instance.new("Frame")
-header.Name = "Header"
-header.Size = UDim2.new(1, 0, 0, 60)
-header.Position = UDim2.new(0, 0, 0, 0)
-header.BackgroundColor3 = COLOR_HEADER
-header.BorderSizePixel = 0
-header.ZIndex = 2
-header.Parent = main
-
--- header cuma corner atas yg bulat, bawah lurus (biar nyatu sama body)
-local headerCorner = Instance.new("UICorner")
-headerCorner.CornerRadius = UDim.new(0, 14)
-headerCorner.Parent = header
-
-local headerFix = Instance.new("Frame")
-headerFix.Size = UDim2.new(1, 0, 0, 14)
-headerFix.Position = UDim2.new(0, 0, 1, -14)
-headerFix.BackgroundColor3 = COLOR_HEADER
-headerFix.BorderSizePixel = 0
-headerFix.ZIndex = 2
-headerFix.Parent = header
-
--- Icon placeholder
-local icon = Instance.new("ImageLabel")
-icon.Name = "GameIcon"
-icon.Size = UDim2.new(0, 40, 0, 40)
-icon.Position = UDim2.new(0, 12, 0.5, -20)
-icon.BackgroundColor3 = Color3.fromRGB(60, 30, 90)
-icon.Image = "" -- taro image id lu di sini
-icon.ZIndex = 3
-icon.Parent = header
-
-local iconCorner = Instance.new("UICorner")
-iconCorner.CornerRadius = UDim.new(0, 8)
-iconCorner.Parent = icon
-
--- Nama Game
-local gameName = Instance.new("TextLabel")
-gameName.Name = "GameName"
-gameName.Size = UDim2.new(1, -170, 0, 22)
-gameName.Position = UDim2.new(0, 60, 0, 8)
-gameName.BackgroundTransparency = 1
-gameName.Text = "Nama Game"
-gameName.Font = Enum.Font.GothamBold
-gameName.TextSize = 16
-gameName.TextColor3 = COLOR_TEXT
-gameName.TextXAlignment = Enum.TextXAlignment.Left
-gameName.ZIndex = 3
-gameName.Parent = header
-
--- Branding "Archeron"
-local brand = Instance.new("TextLabel")
-brand.Name = "Brand"
-brand.Size = UDim2.new(1, -170, 0, 16)
-brand.Position = UDim2.new(0, 60, 0, 30)
-brand.BackgroundTransparency = 1
-brand.Text = "Archeron"
-brand.Font = Enum.Font.Gotham
-brand.TextSize = 12
-brand.TextColor3 = COLOR_SUBTEXT
-brand.TextXAlignment = Enum.TextXAlignment.Left
-brand.ZIndex = 3
-brand.Parent = header
-
--- Admin Panel Button (gear icon)
-local adminBtn = Instance.new("TextButton")
-adminBtn.Name = "AdminButton"
-adminBtn.Size = UDim2.new(0, 30, 0, 30)
-adminBtn.Position = UDim2.new(1, -76, 0, 8)
-adminBtn.BackgroundColor3 = COLOR_ACCENT
-adminBtn.Text = "⚙"
-adminBtn.Font = Enum.Font.GothamBold
-adminBtn.TextSize = 18
-adminBtn.TextColor3 = COLOR_TEXT
-adminBtn.ZIndex = 3
-adminBtn.Parent = header
-
-local adminCorner = Instance.new("UICorner")
-adminCorner.CornerRadius = UDim.new(0, 8)
-adminCorner.Parent = adminBtn
-
--- Close Button
-local closeBtn = Instance.new("TextButton")
-closeBtn.Name = "CloseButton"
-closeBtn.Size = UDim2.new(0, 30, 0, 30)
-closeBtn.Position = UDim2.new(1, -38, 0, 8)
-closeBtn.BackgroundColor3 = Color3.fromRGB(60, 20, 30)
-closeBtn.Text = "X"
-closeBtn.Font = Enum.Font.GothamBold
-closeBtn.TextSize = 16
-closeBtn.TextColor3 = COLOR_TEXT
-closeBtn.ZIndex = 3
-closeBtn.Parent = header
-
-local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 8)
-closeCorner.Parent = closeBtn
-
--- ================= BODY =================
-local body = Instance.new("Frame")
-body.Name = "Body"
-body.Size = UDim2.new(1, 0, 1, -60)
-body.Position = UDim2.new(0, 0, 0, 60)
-body.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-body.BackgroundTransparency = 0.4
-body.BorderSizePixel = 0
-body.Parent = main
-
--- Category Tabs
-local categoryFrame = Instance.new("Frame")
-categoryFrame.Name = "CategoryFrame"
-categoryFrame.Size = UDim2.new(1, -20, 0, 34)
-categoryFrame.Position = UDim2.new(0, 10, 0, 10)
-categoryFrame.BackgroundTransparency = 1
-categoryFrame.Parent = body
-
-local categoryLayout = Instance.new("UIListLayout")
-categoryLayout.FillDirection = Enum.FillDirection.Horizontal
-categoryLayout.Padding = UDim.new(0, 8)
-categoryLayout.Parent = categoryFrame
-
-local mainTab = Instance.new("TextButton")
-mainTab.Name = "Tab_Main"
-mainTab.Size = UDim2.new(0, 90, 1, 0)
-mainTab.BackgroundColor3 = COLOR_ACCENT
-mainTab.Text = "Main"
-mainTab.Font = Enum.Font.GothamBold
-mainTab.TextSize = 14
-mainTab.TextColor3 = COLOR_TEXT
-mainTab.Parent = categoryFrame
-
-local mainTabCorner = Instance.new("UICorner")
-mainTabCorner.CornerRadius = UDim.new(0, 8)
-mainTabCorner.Parent = mainTab
-
--- Feature Area (scroll)
-local featureArea = Instance.new("ScrollingFrame")
-featureArea.Name = "FeatureArea"
-featureArea.Size = UDim2.new(1, -20, 1, -54)
-featureArea.Position = UDim2.new(0, 10, 0, 54)
-featureArea.BackgroundTransparency = 1
-featureArea.BorderSizePixel = 0
-featureArea.ScrollBarThickness = 4
-featureArea.ScrollBarImageColor3 = COLOR_ACCENT
-featureArea.CanvasSize = UDim2.new(0, 0, 0, 0)
-featureArea.AutomaticCanvasSize = Enum.AutomaticSize.Y
-featureArea.Parent = body
-
-local featureLayout = Instance.new("UIListLayout")
-featureLayout.Padding = UDim.new(0, 8)
-featureLayout.Parent = featureArea
-
--- contoh tombol fitur (hapus/ganti sesuai kebutuhan)
-local function createFeatureButton(name)
-	local btn = Instance.new("TextButton")
-	btn.Name = name
-	btn.Size = UDim2.new(1, 0, 0, 36)
-	btn.BackgroundColor3 = Color3.fromRGB(30, 20, 45)
-	btn.Text = name
-	btn.Font = Enum.Font.Gotham
-	btn.TextSize = 14
-	btn.TextColor3 = COLOR_TEXT
-	btn.Parent = featureArea
-
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, 8)
-	c.Parent = btn
-
-	return btn
+local function create(class, props)
+	local obj = Instance.new(class)
+	for k, v in pairs(props) do obj[k] = v end
+	return obj
 end
 
-createFeatureButton("Fitur 1")
-createFeatureButton("Fitur 2")
-createFeatureButton("Fitur 3")
+local function round(obj, r)
+	create("UICorner", { CornerRadius = UDim.new(0, r or 8), Parent = obj })
+end
 
--- ================= FLOATING TOGGLE BUTTON =================
-local floatBtn = Instance.new("TextButton")
-floatBtn.Name = "FloatToggle"
-floatBtn.Size = UDim2.new(0, 50, 0, 50)
-floatBtn.Position = UDim2.new(0.5, -25, 0.9, -25)
-floatBtn.BackgroundColor3 = COLOR_HEADER
-floatBtn.Text = "A"
-floatBtn.Font = Enum.Font.GothamBold
-floatBtn.TextSize = 20
-floatBtn.TextColor3 = COLOR_ACCENT
-floatBtn.Visible = false
-floatBtn.ZIndex = 10
-floatBtn.Parent = screenGui
+-- ================= DATA / LOGIC (dari AnimeSwords) =================
+local DATA = { Maps = {} }
+local selectedMap, selectedNPC
+local farming = false
 
-local floatCorner = Instance.new("UICorner")
-floatCorner.CornerRadius = UDim.new(0, 25)
-floatCorner.Parent = floatBtn
+local function getRoot()
+	local char = player.Character
+	return char and char:FindFirstChild("HumanoidRootPart")
+end
 
--- ================= DRAG FUNCTION =================
-local UserInputService = game:GetService("UserInputService")
+local function teleport(pos)
+	local root = getRoot()
+	if root then root.CFrame = CFrame.new(pos) end
+end
 
-local function makeDraggable(frame)
+local function findMap(name)
+	for _, m in ipairs(DATA.Maps) do
+		if m.Name == name then return m end
+	end
+end
+
+local function findNPC(map, name)
+	if not map then return nil end
+	for _, n in ipairs(map.NPCs) do
+		if n.Name == name then return n end
+	end
+end
+
+-- ================= ROOT GUI =================
+local gui = create("ScreenGui", {
+	Name = "ArcheronGUI",
+	ResetOnSpawn = false,
+	IgnoreGuiInset = true,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	Parent = playerGui
+})
+
+-- ================= MAIN CONTAINER =================
+local main = create("Frame", {
+	Name = "Main",
+	Size = UDim2.new(0, 380, 0, 480),
+	Position = UDim2.new(0.5, -190, 0.5, -240),
+	BackgroundColor3 = COLOR_BG,
+	BorderSizePixel = 0,
+	ClipsDescendants = true,
+	Parent = gui
+})
+round(main, 14)
+
+-- ================= HEADER =================
+local header = create("Frame", {
+	Name = "Header",
+	Size = UDim2.new(1, 0, 0, 60),
+	BackgroundColor3 = COLOR_HEADER,
+	BorderSizePixel = 0,
+	Active = true,
+	Draggable = false, -- drag manual di bawah (biar ga bentrok sama tombol)
+	ZIndex = 2,
+	Parent = main
+})
+round(header, 14)
+create("Frame", {
+	Size = UDim2.new(1, 0, 0, 14),
+	Position = UDim2.new(0, 0, 1, -14),
+	BackgroundColor3 = COLOR_HEADER,
+	BorderSizePixel = 0,
+	ZIndex = 2,
+	Parent = header
+})
+
+local icon = create("ImageLabel", {
+	Size = UDim2.new(0, 40, 0, 40),
+	Position = UDim2.new(0, 12, 0.5, -20),
+	BackgroundColor3 = Color3.fromRGB(60, 30, 90),
+	Image = "",
+	ZIndex = 3,
+	Parent = header
+})
+round(icon, 8)
+
+create("TextLabel", {
+	Size = UDim2.new(1, -170, 0, 22),
+	Position = UDim2.new(0, 60, 0, 8),
+	BackgroundTransparency = 1,
+	Text = "Anime Swords",
+	Font = Enum.Font.GothamBold,
+	TextSize = 16,
+	TextColor3 = COLOR_TEXT,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 3,
+	Parent = header
+})
+
+create("TextLabel", {
+	Size = UDim2.new(1, -170, 0, 16),
+	Position = UDim2.new(0, 60, 0, 30),
+	BackgroundTransparency = 1,
+	Text = "Archeron",
+	Font = Enum.Font.Gotham,
+	TextSize = 12,
+	TextColor3 = COLOR_SUBTEXT,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 3,
+	Parent = header
+})
+
+local adminBtn = create("TextButton", {
+	Size = UDim2.new(0, 30, 0, 30),
+	Position = UDim2.new(1, -76, 0, 8),
+	BackgroundColor3 = COLOR_ACCENT,
+	Text = "⚙",
+	Font = Enum.Font.GothamBold,
+	TextSize = 18,
+	TextColor3 = COLOR_TEXT,
+	ZIndex = 3,
+	Parent = header
+})
+round(adminBtn, 8)
+
+local closeBtn = create("TextButton", {
+	Size = UDim2.new(0, 30, 0, 30),
+	Position = UDim2.new(1, -38, 0, 8),
+	BackgroundColor3 = Color3.fromRGB(60, 20, 30),
+	Text = "X",
+	Font = Enum.Font.GothamBold,
+	TextSize = 16,
+	TextColor3 = COLOR_TEXT,
+	ZIndex = 3,
+	Parent = header
+})
+round(closeBtn, 8)
+
+-- drag manual pake header (biar tombol admin/close ga ikut drag conflict)
+do
+	local UIS = game:GetService("UserInputService")
 	local dragging, dragInput, dragStart, startPos
-
-	frame.InputBegan:Connect(function(input)
+	header.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			dragging = true
 			dragStart = input.Position
-			startPos = frame.Position
-
+			startPos = main.Position
 			input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then
-					dragging = false
-				end
+				if input.UserInputState == Enum.UserInputState.End then dragging = false end
 			end)
 		end
 	end)
-
-	frame.InputChanged:Connect(function(input)
+	header.InputChanged:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
 			dragInput = input
 		end
 	end)
-
-	UserInputService.InputChanged:Connect(function(input)
+	UIS.InputChanged:Connect(function(input)
 		if input == dragInput and dragging then
 			local delta = input.Position - dragStart
-			frame.Position = UDim2.new(
-				startPos.X.Scale, startPos.X.Offset + delta.X,
-				startPos.Y.Scale, startPos.Y.Offset + delta.Y
-			)
+			main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
 		end
 	end)
 end
 
-makeDraggable(header) -- drag main lewat header
-makeDraggable(floatBtn) -- drag floating button
+-- ================= BODY =================
+local body = create("Frame", {
+	Size = UDim2.new(1, 0, 1, -60),
+	Position = UDim2.new(0, 0, 0, 60),
+	BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+	BackgroundTransparency = 0.4,
+	BorderSizePixel = 0,
+	Parent = main
+})
 
--- ================= TOGGLE LOGIC =================
+local categoryFrame = create("Frame", {
+	Size = UDim2.new(1, -20, 0, 34),
+	Position = UDim2.new(0, 10, 0, 10),
+	BackgroundTransparency = 1,
+	Parent = body
+})
+create("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), Parent = categoryFrame })
+
+local mainTab = create("TextButton", {
+	Size = UDim2.new(0, 90, 1, 0),
+	BackgroundColor3 = COLOR_ACCENT,
+	Text = "Main",
+	Font = Enum.Font.GothamBold,
+	TextSize = 14,
+	TextColor3 = COLOR_TEXT,
+	Parent = categoryFrame
+})
+round(mainTab, 8)
+
+-- ================= MAIN PAGE (fitur farm) =================
+local mainPage = create("Frame", {
+	Size = UDim2.new(1, -20, 1, -54),
+	Position = UDim2.new(0, 10, 0, 54),
+	BackgroundTransparency = 1,
+	Parent = body
+})
+
+local function makeButton(parent, text, size, pos)
+	local b = create("TextButton", {
+		Parent = parent, Size = size, Position = pos,
+		BackgroundColor3 = Color3.fromRGB(34, 34, 40),
+		Text = text, TextColor3 = COLOR_TEXT,
+		Font = Enum.Font.GothamMedium, TextSize = 11
+	})
+	round(b, 6)
+	return b
+end
+
+local function makeBox(parent, placeholder, size, pos)
+	local b = create("TextBox", {
+		Parent = parent, Size = size, Position = pos,
+		BackgroundColor3 = Color3.fromRGB(12, 12, 15),
+		TextColor3 = COLOR_TEXT, PlaceholderColor3 = Color3.fromRGB(100, 100, 110),
+		PlaceholderText = placeholder, Text = "", ClearTextOnFocus = false,
+		Font = Enum.Font.Gotham, TextSize = 11
+	})
+	round(b, 6)
+	return b
+end
+
+local mapBtn = makeButton(mainPage, "MAP: Select", UDim2.fromOffset(160, 32), UDim2.fromOffset(0, 0))
+local npcBtn = makeButton(mainPage, "NPC: Select", UDim2.fromOffset(160, 32), UDim2.fromOffset(168, 0))
+
+local mapList = create("ScrollingFrame", {
+	Parent = mainPage, Size = UDim2.fromOffset(160, 110), Position = UDim2.fromOffset(0, 36),
+	BackgroundColor3 = COLOR_PANEL, BorderSizePixel = 0, ScrollBarThickness = 3,
+	CanvasSize = UDim2.new(), Visible = false
+})
+round(mapList, 6)
+local mapLayout = create("UIListLayout", { Padding = UDim.new(0, 2), Parent = mapList })
+
+local npcList = create("ScrollingFrame", {
+	Parent = mainPage, Size = UDim2.fromOffset(160, 110), Position = UDim2.fromOffset(168, 36),
+	BackgroundColor3 = COLOR_PANEL, BorderSizePixel = 0, ScrollBarThickness = 3,
+	CanvasSize = UDim2.new(), Visible = false
+})
+round(npcList, 6)
+local npcLayout = create("UIListLayout", { Padding = UDim.new(0, 2), Parent = npcList })
+
+local status = create("TextLabel", {
+	Parent = mainPage, Size = UDim2.new(1, 0, 0, 20), Position = UDim2.fromOffset(0, 155),
+	BackgroundTransparency = 1, Text = "Map: -  |  NPC: -",
+	TextColor3 = COLOR_SUBTEXT, Font = Enum.Font.Gotham, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left
+})
+
+local tpBtn = makeButton(mainPage, "TELEPORT", UDim2.fromOffset(105, 34), UDim2.fromOffset(0, 190))
+local farmBtn = makeButton(mainPage, "FARM: OFF", UDim2.fromOffset(105, 34), UDim2.fromOffset(112, 190))
+farmBtn.BackgroundColor3 = COLOR_ACCENT
+
+-- ================= ADMIN PAGE (popup, dibuka via gear) =================
+local adminPage = create("Frame", {
+	Size = UDim2.new(0, 320, 0, 420),
+	Position = UDim2.new(0.5, -160, 0.5, -210),
+	BackgroundColor3 = COLOR_BG,
+	BorderSizePixel = 0,
+	Visible = false,
+	ZIndex = 10,
+	Parent = gui
+})
+round(adminPage, 14)
+
+local adminHeader = create("Frame", {
+	Size = UDim2.new(1, 0, 0, 40),
+	BackgroundColor3 = COLOR_HEADER,
+	BorderSizePixel = 0,
+	Active = true,
+	ZIndex = 10,
+	Parent = adminPage
+})
+round(adminHeader, 14)
+create("Frame", {
+	Size = UDim2.new(1, 0, 0, 14), Position = UDim2.new(0, 0, 1, -14),
+	BackgroundColor3 = COLOR_HEADER, BorderSizePixel = 0, ZIndex = 10, Parent = adminHeader
+})
+create("TextLabel", {
+	Size = UDim2.new(1, -40, 1, 0), Position = UDim2.fromOffset(12, 0), BackgroundTransparency = 1,
+	Text = "ADMIN PANEL", Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = COLOR_TEXT,
+	TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 11, Parent = adminHeader
+})
+local adminCloseBtn = create("TextButton", {
+	Size = UDim2.fromOffset(28, 28), Position = UDim2.new(1, -34, 0, 6),
+	BackgroundColor3 = Color3.fromRGB(60, 20, 30), Text = "X", Font = Enum.Font.GothamBold,
+	TextSize = 14, TextColor3 = COLOR_TEXT, ZIndex = 11, Parent = adminHeader
+})
+round(adminCloseBtn, 8)
+
+do
+	local UIS = game:GetService("UserInputService")
+	local dragging, dragInput, dragStart, startPos
+	adminHeader.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = adminPage.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			end)
+		end
+	end)
+	adminHeader.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end)
+	UIS.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			local delta = input.Position - dragStart
+			adminPage.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+end
+
+local adminBody = create("Frame", {
+	Size = UDim2.new(1, -16, 1, -48),
+	Position = UDim2.fromOffset(8, 44),
+	BackgroundTransparency = 1,
+	ZIndex = 10,
+	Parent = adminPage
+})
+
+local mapNameBox = makeBox(adminBody, "Map name", UDim2.fromOffset(150, 30), UDim2.fromOffset(0, 0))
+local mapOrderBox = makeBox(adminBody, "Order", UDim2.fromOffset(55, 30), UDim2.fromOffset(156, 0))
+local addMapBtn = makeButton(adminBody, "+ MAP", UDim2.fromOffset(61, 30), UDim2.fromOffset(217, 0))
+
+local npcNameBox = makeBox(adminBody, "NPC / Mob", UDim2.fromOffset(150, 30), UDim2.fromOffset(0, 38))
+local addNPCBtn = makeButton(adminBody, "+ NPC", UDim2.fromOffset(128, 30), UDim2.fromOffset(156, 38))
+
+local adminStatus = create("TextLabel", {
+	Parent = adminBody, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 74),
+	BackgroundTransparency = 1, Text = "Pilih Map dan NPC", TextColor3 = COLOR_SUBTEXT,
+	Font = Enum.Font.Gotham, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left
+})
+
+local positionList = create("ScrollingFrame", {
+	Parent = adminBody, Size = UDim2.new(1, 0, 0, 145), Position = UDim2.fromOffset(0, 96),
+	BackgroundColor3 = COLOR_PANEL, BorderSizePixel = 0, ScrollBarThickness = 3, CanvasSize = UDim2.new()
+})
+round(positionList, 6)
+local positionLayout = create("UIListLayout", { Padding = UDim.new(0, 3), Parent = positionList })
+
+local addPositionBtn = makeButton(adminBody, "+ POSITION", UDim2.fromOffset(92, 30), UDim2.fromOffset(0, 245))
+local saveBtn = makeButton(adminBody, "SAVE", UDim2.fromOffset(92, 30), UDim2.fromOffset(98, 245))
+local deleteBtn = makeButton(adminBody, "DELETE", UDim2.fromOffset(92, 30), UDim2.fromOffset(196, 245))
+
+-- ================= FLOATING TOGGLE =================
+local floatBtn = create("TextButton", {
+	Size = UDim2.fromOffset(50, 50),
+	Position = UDim2.new(0.5, -25, 0.9, -25),
+	BackgroundColor3 = COLOR_HEADER,
+	Text = "A", Font = Enum.Font.GothamBold, TextSize = 20, TextColor3 = COLOR_ACCENT,
+	Visible = false, ZIndex = 10, Parent = gui
+})
+round(floatBtn, 25)
+
+do
+	local UIS = game:GetService("UserInputService")
+	local dragging, dragInput, dragStart, startPos
+	floatBtn.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = floatBtn.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then dragging = false end
+			end)
+		end
+	end)
+	floatBtn.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end)
+	UIS.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			local delta = input.Position - dragStart
+			floatBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+end
+
+-- ================= LOGIC (sama kayak script lama, cuma refer ke elemen baru) =================
+local function clearList(container, layout)
+	for _, child in ipairs(container:GetChildren()) do
+		if child ~= layout then child:Destroy() end
+	end
+end
+
+local function updateStatus()
+	local mapText = selectedMap and selectedMap.Name or "-"
+	local npcText = selectedNPC and selectedNPC.Name or "-"
+	status.Text = "Map: " .. mapText .. "  |  NPC: " .. npcText
+	adminStatus.Text = "Map: " .. mapText .. "  |  NPC: " .. npcText
+end
+
+local function refreshPositions()
+	clearList(positionList, positionLayout)
+	if not selectedNPC then return end
+
+	for index, position in ipairs(selectedNPC.Positions) do
+		local row = create("Frame", {
+			Parent = positionList, Size = UDim2.new(1, -6, 0, 40),
+			BackgroundColor3 = Color3.fromRGB(30, 30, 36), BorderSizePixel = 0, ZIndex = 10
+		})
+		round(row, 5)
+
+		create("TextLabel", {
+			Parent = row, Size = UDim2.fromOffset(20, 40), Position = UDim2.fromOffset(4, 0),
+			BackgroundTransparency = 1, Text = tostring(index), TextColor3 = COLOR_SUBTEXT,
+			Font = Enum.Font.GothamBold, TextSize = 10, ZIndex = 10
+		})
+
+		local x = makeBox(row, "X", UDim2.fromOffset(68, 26), UDim2.fromOffset(27, 7))
+		local y = makeBox(row, "Y", UDim2.fromOffset(68, 26), UDim2.fromOffset(99, 7))
+		local z = makeBox(row, "Z", UDim2.fromOffset(68, 26), UDim2.fromOffset(171, 7))
+		x.ZIndex, y.ZIndex, z.ZIndex = 10, 10, 10
+		x.Text, y.Text, z.Text = tostring(position.X), tostring(position.Y), tostring(position.Z)
+
+		local remove = makeButton(row, "×", UDim2.fromOffset(30, 26), UDim2.fromOffset(243, 7))
+		remove.ZIndex = 10
+		remove.MouseButton1Click:Connect(function()
+			if selectedNPC then
+				table.remove(selectedNPC.Positions, index)
+				refreshPositions()
+			end
+		end)
+	end
+
+	positionList.CanvasSize = UDim2.fromOffset(0, positionLayout.AbsoluteContentSize.Y + 5)
+end
+
+local function refreshNPCs()
+	clearList(npcList, npcLayout)
+	if not selectedMap then return end
+
+	for _, npc in ipairs(selectedMap.NPCs) do
+		local b = makeButton(npcList, npc.Name, UDim2.new(1, -5, 0, 28), UDim2.new())
+		b.MouseButton1Click:Connect(function()
+			selectedNPC = npc
+			npcBtn.Text = "NPC: " .. npc.Name
+			npcList.Visible = false
+			updateStatus()
+			refreshPositions()
+		end)
+	end
+
+	npcList.CanvasSize = UDim2.fromOffset(0, npcLayout.AbsoluteContentSize.Y + 5)
+	updateStatus()
+end
+
+local function refreshMaps()
+	clearList(mapList, mapLayout)
+	table.sort(DATA.Maps, function(a, b) return a.Order < b.Order end)
+
+	for _, map in ipairs(DATA.Maps) do
+		local b = makeButton(mapList, tostring(map.Order) .. "  " .. map.Name, UDim2.new(1, -5, 0, 28), UDim2.new())
+		b.MouseButton1Click:Connect(function()
+			selectedMap = map
+			selectedNPC = nil
+			mapBtn.Text = "MAP: " .. map.Name
+			npcBtn.Text = "NPC: Select"
+			mapList.Visible = false
+			refreshNPCs()
+			refreshPositions()
+			updateStatus()
+		end)
+	end
+
+	mapList.CanvasSize = UDim2.fromOffset(0, mapLayout.AbsoluteContentSize.Y + 5)
+end
+
+mapBtn.MouseButton1Click:Connect(function()
+	npcList.Visible = false
+	mapList.Visible = not mapList.Visible
+end)
+
+npcBtn.MouseButton1Click:Connect(function()
+	mapList.Visible = false
+	if selectedMap then npcList.Visible = not npcList.Visible end
+end)
+
+tpBtn.MouseButton1Click:Connect(function()
+	if selectedNPC and selectedNPC.Positions[1] then
+		teleport(selectedNPC.Positions[1])
+	end
+end)
+
+farmBtn.MouseButton1Click:Connect(function()
+	farming = not farming
+	farmBtn.Text = farming and "FARM: ON" or "FARM: OFF"
+	farmBtn.BackgroundColor3 = farming and Color3.fromRGB(60, 200, 100) or COLOR_ACCENT
+	if not farming then return end
+
+	task.spawn(function()
+		local index = 1
+		while farming do
+			if not selectedNPC or #selectedNPC.Positions == 0 then
+				task.wait(0.2)
+				continue
+			end
+			if index > #selectedNPC.Positions then index = 1 end
+			teleport(selectedNPC.Positions[index])
+			task.wait(0.6)
+			index += 1
+		end
+	end)
+end)
+
+addMapBtn.MouseButton1Click:Connect(function()
+	local name = mapNameBox.Text:match("^%s*(.-)%s*$")
+	local order = tonumber(mapOrderBox.Text)
+	if name == "" or not order or findMap(name) then return end
+
+	table.insert(DATA.Maps, { Name = name, Order = order, NPCs = {} })
+	mapNameBox.Text = ""
+	mapOrderBox.Text = ""
+	refreshMaps()
+end)
+
+addNPCBtn.MouseButton1Click:Connect(function()
+	if not selectedMap then return end
+	local name = npcNameBox.Text:match("^%s*(.-)%s*$")
+	if name == "" or findNPC(selectedMap, name) then return end
+
+	local npc = { Name = name, Positions = {} }
+	table.insert(selectedMap.NPCs, npc)
+	selectedNPC = npc
+	npcNameBox.Text = ""
+	npcBtn.Text = "NPC: " .. name
+	refreshNPCs()
+	refreshPositions()
+	updateStatus()
+end)
+
+addPositionBtn.MouseButton1Click:Connect(function()
+	if not selectedNPC then return end
+	table.insert(selectedNPC.Positions, Vector3.new(0, 0, 0))
+	refreshPositions()
+end)
+
+saveBtn.MouseButton1Click:Connect(function()
+	if not selectedNPC then return end
+	local positions = {}
+
+	for _, row in ipairs(positionList:GetChildren()) do
+		if row:IsA("Frame") then
+			local boxes = {}
+			for _, child in ipairs(row:GetChildren()) do
+				if child:IsA("TextBox") then table.insert(boxes, child) end
+			end
+			table.sort(boxes, function(a, b) return a.AbsolutePosition.X < b.AbsolutePosition.X end)
+			local x = boxes[1] and tonumber(boxes[1].Text)
+			local y = boxes[2] and tonumber(boxes[2].Text)
+			local z = boxes[3] and tonumber(boxes[3].Text)
+			if x and y and z then table.insert(positions, Vector3.new(x, y, z)) end
+		end
+	end
+
+	selectedNPC.Positions = positions
+	refreshPositions()
+end)
+
+deleteBtn.MouseButton1Click:Connect(function()
+	if not selectedMap or not selectedNPC then return end
+	for i, npc in ipairs(selectedMap.NPCs) do
+		if npc == selectedNPC then
+			table.remove(selectedMap.NPCs, i)
+			break
+		end
+	end
+	selectedNPC = nil
+	npcBtn.Text = "NPC: Select"
+	refreshNPCs()
+	refreshPositions()
+	updateStatus()
+end)
+
+-- ================= TOGGLE / ADMIN OPEN LOGIC =================
 closeBtn.MouseButton1Click:Connect(function()
 	main.Visible = false
 	floatBtn.Visible = true
@@ -276,7 +609,13 @@ floatBtn.MouseButton1Click:Connect(function()
 	floatBtn.Visible = false
 end)
 
--- ================= ADMIN PANEL PLACEHOLDER =================
 adminBtn.MouseButton1Click:Connect(function()
-	print("Admin panel dibuka") -- ganti sesuai logic admin panel lu
+	adminPage.Visible = true
 end)
+
+adminCloseBtn.MouseButton1Click:Connect(function()
+	adminPage.Visible = false
+end)
+
+refreshMaps()
+updateStatus()
