@@ -1,5 +1,5 @@
--- language: Lua (Roblox exploit)
--- Archeron Hub v1.3 | enemy: Health attribute + nested room folders
+-- Archeron Hub v1.4 | Anime Legacy Simulator
+-- fix: Dungeon Easy Folder, enemy=BasePart, Health=NumberValue child
 
 local Players  = game:GetService("Players")
 local TweenSvc = game:GetService("TweenService")
@@ -19,25 +19,24 @@ end)
 local farmActive = false
 local statusText = "Idle"
 
--- path: Server.Enemies.Gamemodes["Dungeon Easy"].Global
--- enemies nested di subfolder room (Jogu, Kashimu, dll)
+-- path: Server > Enemies > Gamemodes > "Dungeon Easy Folder" > Global
 local function getEnemyFolder()
-    local s = workspace:FindFirstChild("Server") if not s then return end
-    local e = s:FindFirstChild("Enemies")        if not e then return end
-    local g = e:FindFirstChild("Gamemodes")      if not g then return end
-    local d = g:FindFirstChild("Dungeon Easy")   if not d then return end
+    local s = workspace:FindFirstChild("Server")              if not s then return end
+    local e = s:FindFirstChild("Enemies")                     if not e then return end
+    local g = e:FindFirstChild("Gamemodes")                   if not g then return end
+    local d = g:FindFirstChild("Dungeon Easy Folder")         if not d then return end
     return d:FindFirstChild("Global")
 end
 
--- scan semua descendants Global, filter by Health attribute > 0
+-- enemies = BasePart dengan child Health (NumberValue) > 0
 local function getEnemies()
     local folder = getEnemyFolder()
     local list = {}
     if not folder then return list end
     for _, v in ipairs(folder:GetDescendants()) do
-        if v:IsA("Model") then
-            local hp = v:GetAttribute("Health")
-            if hp ~= nil and hp > 0 then
+        if v:IsA("BasePart") then
+            local hpObj = v:FindFirstChild("Health")
+            if hpObj and hpObj:IsA("NumberValue") and hpObj.Value > 0 then
                 table.insert(list, v)
             end
         end
@@ -45,47 +44,37 @@ local function getEnemies()
     return list
 end
 
--- root part dari model
-local function getRoot(model)
-    if model.PrimaryPart then return model.PrimaryPart end
-    for _, name in ipairs({"HumanoidRootPart","RootPart","Root","Torso","UpperTorso","Head"}) do
-        local p = model:FindFirstChild(name)
-        if p and p:IsA("BasePart") then return p end
-    end
-    return model:FindFirstChildWhichIsA("BasePart")
-end
-
--- enemy terdekat dari HRP
+-- nearest enemy + posisinya (dari CurrentPosition CFrameValue atau .Position)
 local function getNearestEnemy()
     local enemies = getEnemies()
-    local best, bestDist = nil, math.huge
-    for _, model in ipairs(enemies) do
-        local root = getRoot(model)
-        if root then
-            local d = (hrp.Position - root.Position).Magnitude
-            if d < bestDist then best = model; bestDist = d end
+    local best, bestDist, bestPos = nil, math.huge, nil
+    for _, part in ipairs(enemies) do
+        local cpObj = part:FindFirstChild("CurrentPosition")
+        local pos = (cpObj and cpObj.Value.Position) or part.Position
+        local d = (hrp.Position - pos).Magnitude
+        if d < bestDist then
+            best = part; bestDist = d; bestPos = pos
         end
     end
-    return best
+    return best, bestPos
 end
 
--- tunggu enemy mati: Health <= 0 atau parent nil
-local function waitDead(model, timeout)
+-- tunggu enemy mati
+local function waitDead(part, timeout)
     local t = 0
     while t < (timeout or 10) do
-        if not model or model.Parent == nil then break end
-        local hp = model:GetAttribute("Health")
-        if hp ~= nil and hp <= 0 then break end
+        if not part or part.Parent == nil then break end
+        local hpObj = part:FindFirstChild("Health")
+        if not hpObj or hpObj.Value <= 0 then break end
         task.wait(0.05)
         t = t + 0.05
     end
     task.wait(0.1)
 end
 
--- door: ProximityPrompt terdekat → fallback touch "door"
+-- door: ProximityPrompt terdekat → fallback touch part "door"
 local function findAndOpenDoor()
     local best, bestDist = nil, math.huge
-
     for _, v in ipairs(workspace:GetDescendants()) do
         if v:IsA("ProximityPrompt") then
             local part = v.Parent:IsA("BasePart") and v.Parent
@@ -96,7 +85,6 @@ local function findAndOpenDoor()
             end
         end
     end
-
     if best then
         local part = best.Parent:IsA("BasePart") and best.Parent
             or best.Parent:FindFirstChildWhichIsA("BasePart")
@@ -108,7 +96,6 @@ local function findAndOpenDoor()
         statusText = "Door triggered"
         return true
     end
-
     best, bestDist = nil, math.huge
     for _, v in ipairs(workspace:GetDescendants()) do
         if v:IsA("BasePart") and v.Name:lower():find("door") then
@@ -116,7 +103,6 @@ local function findAndOpenDoor()
             if d < bestDist then best = v; bestDist = d end
         end
     end
-
     if best then
         hrp.CFrame = CFrame.new(best.Position + Vector3.new(0, 4, 0))
         task.wait(0.1)
@@ -126,7 +112,6 @@ local function findAndOpenDoor()
         statusText = "Door touched"
         return true
     end
-
     statusText = "No door found"
     return false
 end
@@ -145,13 +130,11 @@ local function farmLoop()
             local ok = findAndOpenDoor()
             task.wait(ok and 2.5 or 2)
         else
-            local enemy = getNearestEnemy()
+            local enemy, enemyPos = getNearestEnemy()
             if not enemy then task.wait(0.3); continue end
-
-            local root = getRoot(enemy)
-            if root then
+            if enemyPos then
                 statusText = "Farming: " .. enemy.Name
-                hrp.CFrame = root.CFrame
+                hrp.CFrame = CFrame.new(enemyPos)
                 task.wait(0.05)
                 waitDead(enemy, 10)
             end
@@ -189,7 +172,6 @@ end
 local function CR(r, p) N("UICorner", {CornerRadius = UDim.new(0, r)}, p) end
 local function ST(c, t, p) N("UIStroke", {Color = c, Thickness = t}, p) end
 
--- drag: handle = sumber input, target = frame yg digerakin
 local function makeDrag(handle, target)
     local mv = target or handle
     local dragging, start, origin, lastInp = false, nil, nil, nil
@@ -221,7 +203,6 @@ local function makeDrag(handle, target)
     end)
 end
 
--- destroy old gui
 pcall(function()
     local old = lp.PlayerGui:FindFirstChild("ArcheronHub")
     if old then old:Destroy() end
@@ -234,7 +215,7 @@ local gui = N("ScreenGui", {
     Parent = (gethui and gethui()) or lp.PlayerGui
 })
 
--- ── DOT ──────────────────────────────────────────────────
+-- DOT
 local dot = N("Frame", {
     Size = UDim2.new(0, 44, 0, 44),
     Position = UDim2.new(0, 14, 0.5, -22),
@@ -255,7 +236,6 @@ N("TextLabel", {
 })
 makeDrag(dot, dot)
 
--- ── MAIN ─────────────────────────────────────────────────
 local isOpen = false
 
 local main = N("Frame", {
@@ -286,14 +266,11 @@ local function setOpen(v)
     end
 end
 
--- dot click → toggle open
-local dotDrag2, dotStart2, dotOrigin2, dotMoved2 = false, nil, nil, false
-local dotLast2
+local dotDrag2, dotStart2, dotMoved2, dotLast2 = false, nil, false, nil
 dot.InputBegan:Connect(function(inp)
     if inp.UserInputType == Enum.UserInputType.MouseButton1
     or inp.UserInputType == Enum.UserInputType.Touch then
-        dotDrag2 = true; dotStart2 = inp.Position
-        dotOrigin2 = dot.Position; dotMoved2 = false
+        dotDrag2 = true; dotStart2 = inp.Position; dotMoved2 = false
     end
 end)
 dot.InputChanged:Connect(function(inp)
@@ -316,7 +293,7 @@ UIS.InputEnded:Connect(function(inp)
     end
 end)
 
--- ── HEADER ───────────────────────────────────────────────
+-- HEADER
 local hdr = N("Frame", {
     Size = UDim2.new(1, 0, 0, 40),
     BackgroundColor3 = C.hdr,
@@ -325,7 +302,6 @@ local hdr = N("Frame", {
     Parent = main
 })
 CR(12, hdr)
--- fill bottom corners
 N("Frame", {
     Size = UDim2.new(1, 0, 0.5, 0),
     Position = UDim2.new(0, 0, 0.5, 0),
@@ -333,9 +309,7 @@ N("Frame", {
     BorderSizePixel = 0,
     Parent = hdr
 })
--- drag header → gerakin main
 makeDrag(hdr, main)
-
 N("TextLabel", {
     Size = UDim2.new(1, -48, 1, 0),
     Position = UDim2.new(0, 12, 0, 0),
@@ -347,7 +321,6 @@ N("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
     Parent = hdr
 })
-
 local closeBtn = N("TextButton", {
     Size = UDim2.new(0, 26, 0, 26),
     Position = UDim2.new(1, -34, 0.5, -13),
@@ -362,7 +335,7 @@ local closeBtn = N("TextButton", {
 CR(6, closeBtn)
 closeBtn.MouseButton1Click:Connect(function() setOpen(false) end)
 
--- ── CONTENT ──────────────────────────────────────────────
+-- CONTENT
 local content = N("Frame", {
     Size = UDim2.new(1, -20, 1, -50),
     Position = UDim2.new(0, 10, 0, 46),
@@ -375,7 +348,6 @@ N("UIListLayout", {
     Parent = content
 })
 
--- STATUS BAR
 local statBar = N("Frame", {
     Size = UDim2.new(1, 0, 0, 26),
     BackgroundColor3 = C.stat,
@@ -399,7 +371,6 @@ task.spawn(function()
     while task.wait(0.5) do statLbl.Text = "● " .. statusText end
 end)
 
--- BUILDERS
 local ord = 0
 local function section(title)
     ord = ord + 1
@@ -487,7 +458,7 @@ local function toggle(label, callback)
     end)
 end
 
--- ── BUILD ─────────────────────────────────────────────────
+-- BUILD
 section("DUNGEON")
 toggle("Auto Farm Easy", function(on)
     farmActive = on
@@ -509,4 +480,4 @@ toggle("Anti AFK", function(on)
     end
 end)
 
-print("[Archeron Hub] v1.3 loaded")
+print("[Archeron Hub] v1.4 loaded")
