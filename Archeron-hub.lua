@@ -1,5 +1,5 @@
 -- language: Lua (Roblox exploit)
--- Archeron Hub v1.0 | Anime Legacy Simulator | dark void purple
+-- Archeron Hub v1.1 | fix door detection + GUI layout
 
 local Players  = game:GetService("Players")
 local TweenSvc = game:GetService("TweenService")
@@ -14,20 +14,16 @@ lp.CharacterAdded:Connect(function(c)
     hrp  = c:WaitForChild("HumanoidRootPart")
 end)
 
--- ═══════════════════ LOGIC ═══════════════════════════
+-- ═════════════════════ LOGIC ═════════════════════════
 
 local farmActive = false
 local statusText = "Idle"
 
 local function getEnemyFolder()
-    local s = workspace:FindFirstChild("Server")
-    if not s then return end
-    local e = s:FindFirstChild("Enemies")
-    if not e then return end
-    local g = e:FindFirstChild("Gamemodes")
-    if not g then return end
-    local d = g:FindFirstChild("Dungeon Easy")
-    if not d then return end
+    local s = workspace:FindFirstChild("Server") if not s then return end
+    local e = s:FindFirstChild("Enemies")        if not e then return end
+    local g = e:FindFirstChild("Gamemodes")      if not g then return end
+    local d = g:FindFirstChild("Dungeon Easy")   if not d then return end
     return d:FindFirstChild("Global")
 end
 
@@ -35,12 +31,10 @@ local function getEnemies()
     local folder = getEnemyFolder()
     local list = {}
     if not folder then return list end
-    for _, model in ipairs(folder:GetDescendants()) do
-        if model:IsA("Model") then
-            local hum = model:FindFirstChildOfClass("Humanoid")
-            if hum and hum.Health > 0 then
-                table.insert(list, model)
-            end
+    for _, v in ipairs(folder:GetDescendants()) do
+        if v:IsA("Model") then
+            local hum = v:FindFirstChildOfClass("Humanoid")
+            if hum and hum.Health > 0 then table.insert(list, v) end
         end
     end
     return list
@@ -53,30 +47,55 @@ local function getRoot(model)
         or model:FindFirstChildWhichIsA("BasePart")
 end
 
-local function getNearestDoor()
-    local maps = workspace:FindFirstChild("Maps")
-    if not maps then return nil end
+-- door: pass 1 ProximityPrompt, pass 2 touch BasePart
+local function findAndOpenDoor()
     local best, bestDist = nil, math.huge
-    for _, v in ipairs(maps:GetDescendants()) do
-        if v.Name == "Door" and v:IsA("BasePart") then
+
+    -- pass 1: cari ProximityPrompt terdekat
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("ProximityPrompt") then
+            local part = v.Parent:IsA("BasePart") and v.Parent
+                or v.Parent:FindFirstChildWhichIsA("BasePart")
+            if part then
+                local d = (hrp.Position - part.Position).Magnitude
+                if d < bestDist then best = v; bestDist = d end
+            end
+        end
+    end
+
+    if best then
+        local part = best.Parent:IsA("BasePart") and best.Parent
+            or best.Parent:FindFirstChildWhichIsA("BasePart")
+        if part then
+            hrp.CFrame = CFrame.new(part.Position + Vector3.new(0, 4, 2))
+            task.wait(0.15)
+        end
+        pcall(function() fireproximityprompt(best) end)
+        statusText = "Door triggered"
+        return true
+    end
+
+    -- pass 2: BasePart nama mengandung "door"
+    best, bestDist = nil, math.huge
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("BasePart") and v.Name:lower():find("door") then
             local d = (hrp.Position - v.Position).Magnitude
             if d < bestDist then best = v; bestDist = d end
         end
     end
-    return best
-end
 
-local function openDoor(door)
-    hrp.CFrame = CFrame.new(door.Position + Vector3.new(0, 3, 0))
-    task.wait(0.1)
-    pcall(function() firetouchinterest(hrp, door, 0) end)
-    task.wait(0.05)
-    pcall(function() firetouchinterest(hrp, door, 1) end)
-    for _, v in ipairs(door.Parent:GetDescendants()) do
-        if v:IsA("ProximityPrompt") then
-            pcall(function() fireproximityprompt(v) end)
-        end
+    if best then
+        hrp.CFrame = CFrame.new(best.Position + Vector3.new(0, 4, 0))
+        task.wait(0.1)
+        pcall(function() firetouchinterest(hrp, best, 0) end)
+        task.wait(0.05)
+        pcall(function() firetouchinterest(hrp, best, 1) end)
+        statusText = "Door touched"
+        return true
     end
+
+    statusText = "No door found"
+    return false
 end
 
 local function waitDead(model, timeout)
@@ -98,14 +117,14 @@ local function farmLoop()
         if not hrp then task.wait(1); continue end
 
         local enemies = getEnemies()
+
         if #enemies == 0 then
             statusText = "Opening door..."
-            local door = getNearestDoor()
-            if door then
-                openDoor(door)
-                task.wait(1.5)
+            local ok = findAndOpenDoor()
+            if ok then
+                statusText = "Waiting spawn..."
+                task.wait(2.5)
             else
-                statusText = "No door found"
                 task.wait(2)
             end
         else
@@ -117,7 +136,10 @@ local function farmLoop()
                 hrp  = char and char:FindFirstChild("HumanoidRootPart")
                 if not hrp then break end
                 local root = getRoot(enemy)
-                if root then hrp.CFrame = root.CFrame end
+                if root then
+                    hrp.CFrame = root.CFrame
+                    task.wait(0.05)
+                end
                 waitDead(enemy, 8)
             end
         end
@@ -126,13 +148,13 @@ local function farmLoop()
     statusText = "Idle"
 end
 
--- ═══════════════════ GUI ═════════════════════════════
+-- ═════════════════════ GUI ═══════════════════════════
 
 local C = {
     bg    = Color3.fromRGB(8,   5,   20),
     panel = Color3.fromRGB(16,  10,  38),
     hdr   = Color3.fromRGB(22,  13,  50),
-    acc   = Color3.fromRGB(95,  45, 205),
+    acc   = Color3.fromRGB(95,  45,  205),
     txt   = Color3.fromRGB(215, 195, 255),
     sub   = Color3.fromRGB(110, 80,  170),
     tOn   = Color3.fromRGB(85,  30,  195),
@@ -143,8 +165,8 @@ local C = {
     sep   = Color3.fromRGB(60,  30,  120),
 }
 
-local function N(class, props, parent)
-    local o = Instance.new(class)
+local function N(cls, props, parent)
+    local o = Instance.new(cls)
     for k, v in pairs(props) do o[k] = v end
     if parent then o.Parent = parent end
     return o
@@ -152,10 +174,8 @@ end
 local function CR(r, p) N("UICorner", {CornerRadius = UDim.new(0, r)}, p) end
 local function ST(c, t, p) N("UIStroke", {Color = c, Thickness = t}, p) end
 
--- drag helper
 local function makeDrag(frame)
-    local dragging, start, origin = false, nil, nil
-    local lastInp
+    local dragging, start, origin, lastInp = false, nil, nil, nil
     frame.InputBegan:Connect(function(inp)
         if inp.UserInputType == Enum.UserInputType.MouseButton1
         or inp.UserInputType == Enum.UserInputType.Touch then
@@ -184,7 +204,6 @@ local function makeDrag(frame)
     end)
 end
 
--- root
 local gui = N("ScreenGui", {
     Name = "ArcheronHub",
     ResetOnSpawn = false,
@@ -192,10 +211,10 @@ local gui = N("ScreenGui", {
     Parent = (gethui and gethui()) or lp.PlayerGui
 })
 
--- ─── DOT ─────────────────────────────────────────────
+-- ── DOT ──────────────────────────────────────────────
 local dot = N("Frame", {
     Size = UDim2.new(0, 44, 0, 44),
-    Position = UDim2.new(0, 14, 0.45, 0),
+    Position = UDim2.new(0, 14, 0.5, -22),
     BackgroundColor3 = C.panel,
     BorderSizePixel = 0,
     Active = true,
@@ -212,7 +231,7 @@ N("TextLabel", {
     Parent = dot
 })
 
--- dot: drag + click combined
+local isOpen = false
 local dotDrag, dotStart, dotOrigin, dotMoved = false, nil, nil, false
 local dotLastInp
 
@@ -232,53 +251,36 @@ end)
 UIS.InputChanged:Connect(function(inp)
     if inp == dotLastInp and dotDrag then
         local d = inp.Position - dotStart
-        if d.Magnitude > 4 then dotMoved = true end
+        if d.Magnitude > 5 then dotMoved = true end
         dot.Position = UDim2.new(
             dotOrigin.X.Scale, dotOrigin.X.Offset + d.X,
             dotOrigin.Y.Scale, dotOrigin.Y.Offset + d.Y)
     end
 end)
 
--- ─── MAIN ────────────────────────────────────────────
-local isOpen = false
-
+-- ── MAIN ─────────────────────────────────────────────
 local main = N("Frame", {
-    Size = UDim2.new(0, 265, 0, 0),
-    Position = UDim2.new(0, 66, 0.38, 0),
+    Size = UDim2.new(0, 260, 0, 310),
+    Position = UDim2.new(0, 66, 0.5, -155),
     BackgroundColor3 = C.bg,
     BorderSizePixel = 0,
-    ClipsDescendants = true,
     Visible = false,
     Parent = gui
 })
 CR(12, main); ST(C.acc, 1.5, main)
 
-local function setOpen(v)
-    isOpen = v
-    if v then
-        main.Visible = true
-        TweenSvc:Create(main,
-            TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-            {Size = UDim2.new(0, 265, 0, 310)}):Play()
-    else
-        TweenSvc:Create(main,
-            TweenInfo.new(0.18, Enum.EasingStyle.Quad),
-            {Size = UDim2.new(0, 265, 0, 0)}):Play()
-        task.delay(0.19, function()
-            if not isOpen then main.Visible = false end
-        end)
-    end
-end
-
 UIS.InputEnded:Connect(function(inp)
     if dotDrag and (inp.UserInputType == Enum.UserInputType.MouseButton1
     or inp.UserInputType == Enum.UserInputType.Touch) then
         dotDrag = false
-        if not dotMoved then setOpen(not isOpen) end
+        if not dotMoved then
+            isOpen = not isOpen
+            main.Visible = isOpen
+        end
     end
 end)
 
--- HEADER (drag handle)
+-- HEADER
 local hdr = N("Frame", {
     Size = UDim2.new(1, 0, 0, 40),
     BackgroundColor3 = C.hdr,
@@ -287,7 +289,6 @@ local hdr = N("Frame", {
     Parent = main
 })
 CR(12, hdr)
--- fill bottom radius
 N("Frame", {
     Size = UDim2.new(1, 0, 0.5, 0),
     Position = UDim2.new(0, 0, 0.5, 0),
@@ -298,7 +299,7 @@ N("Frame", {
 makeDrag(hdr)
 
 N("TextLabel", {
-    Size = UDim2.new(1, -46, 1, 0),
+    Size = UDim2.new(1, -48, 1, 0),
     Position = UDim2.new(0, 12, 0, 0),
     BackgroundTransparency = 1,
     Text = "✦  ARCHERON HUB",
@@ -321,34 +322,31 @@ local closeBtn = N("TextButton", {
     Parent = hdr
 })
 CR(6, closeBtn)
-closeBtn.MouseButton1Click:Connect(function() setOpen(false) end)
+closeBtn.MouseButton1Click:Connect(function()
+    isOpen = false
+    main.Visible = false
+end)
 
--- SCROLL
-local scroll = N("ScrollingFrame", {
-    Size = UDim2.new(1, 0, 1, -40),
-    Position = UDim2.new(0, 0, 0, 40),
+-- CONTENT — Frame biasa, no ScrollingFrame
+local content = N("Frame", {
+    Size = UDim2.new(1, -20, 1, -50),
+    Position = UDim2.new(0, 10, 0, 46),
     BackgroundTransparency = 1,
-    BorderSizePixel = 0,
-    ScrollBarThickness = 2,
-    ScrollBarImageColor3 = C.acc,
-    AutomaticCanvasSize = Enum.AutomaticSize.Y,
-    CanvasSize = UDim2.new(0, 0, 0, 0),
     Parent = main
 })
-N("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 6), Parent = scroll})
-N("UIPadding", {
-    PaddingLeft   = UDim.new(0, 10), PaddingRight  = UDim.new(0, 10),
-    PaddingTop    = UDim.new(0, 8),  PaddingBottom = UDim.new(0, 8),
-    Parent = scroll
+N("UIListLayout", {
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    Padding = UDim.new(0, 6),
+    Parent = content
 })
 
--- STATUS
+-- STATUS BAR
 local statBar = N("Frame", {
     Size = UDim2.new(1, 0, 0, 26),
     BackgroundColor3 = Color3.fromRGB(13, 8, 30),
     BorderSizePixel = 0,
     LayoutOrder = 0,
-    Parent = scroll
+    Parent = content
 })
 CR(6, statBar); ST(C.sep, 1, statBar)
 
@@ -370,7 +368,7 @@ task.spawn(function()
     end
 end)
 
--- BUILDERS
+-- SECTION + TOGGLE
 local ord = 0
 local function section(title)
     ord = ord + 1
@@ -378,7 +376,7 @@ local function section(title)
         Size = UDim2.new(1, 0, 0, 18),
         BackgroundTransparency = 1,
         LayoutOrder = ord,
-        Parent = scroll
+        Parent = content
     })
     N("Frame", {
         Size = UDim2.new(1, 0, 0, 1),
@@ -409,7 +407,7 @@ local function toggle(label, callback)
         BackgroundColor3 = C.panel,
         BorderSizePixel = 0,
         LayoutOrder = ord,
-        Parent = scroll
+        Parent = content
     })
     CR(8, row)
     N("TextLabel", {
@@ -423,7 +421,6 @@ local function toggle(label, callback)
         TextXAlignment = Enum.TextXAlignment.Left,
         Parent = row
     })
-
     local pill = N("Frame", {
         Size = UDim2.new(0, 36, 0, 18),
         Position = UDim2.new(1, -44, 0.5, -9),
@@ -432,7 +429,6 @@ local function toggle(label, callback)
         Parent = row
     })
     CR(999, pill)
-
     local knob = N("Frame", {
         Size = UDim2.new(0, 14, 0, 14),
         Position = UDim2.new(0, 2, 0.5, -7),
@@ -441,7 +437,6 @@ local function toggle(label, callback)
         Parent = pill
     })
     CR(999, knob)
-
     local state = false
     local btn = N("TextButton", {
         Size = UDim2.new(1, 0, 1, 0),
@@ -449,7 +444,6 @@ local function toggle(label, callback)
         Text = "",
         Parent = row
     })
-
     local ti = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
     btn.MouseButton1Click:Connect(function()
         state = not state
@@ -476,10 +470,7 @@ toggle("Anti AFK", function(on)
             while on do
                 pcall(function()
                     local va = workspace:FindFirstChildOfClass("VirtualUser")
-                    if va then
-                        va:CaptureController()
-                        va:ClickButton2(Vector2.new())
-                    end
+                    if va then va:CaptureController(); va:ClickButton2(Vector2.new()) end
                 end)
                 task.wait(20)
             end
@@ -487,4 +478,4 @@ toggle("Anti AFK", function(on)
     end
 end)
 
-print("[Archeron Hub] v1.0 ready")
+print("[Archeron Hub] v1.1 ready")
