@@ -1,5 +1,5 @@
--- Archeron Hub v1.4 | Anime Legacy Simulator
--- fix: Dungeon Easy Folder, enemy=BasePart, Health=NumberValue child
+-- Archeron Hub v1.5 | Anime Legacy Simulator
+-- fix: destroy BodyMovers before CFrame TP
 
 local Players  = game:GetService("Players")
 local TweenSvc = game:GetService("TweenService")
@@ -42,6 +42,19 @@ local function getEnemies()
         end
     end
     return list
+end
+
+-- hapus BodyMovers dari HRP sebelum TP
+local function clearMovers()
+    local h = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
+    if not h then return end
+    for _, v in pairs(h:GetChildren()) do
+        if v:IsA("BodyPosition") or v:IsA("AlignPosition")
+        or v:IsA("BodyVelocity") or v:IsA("BodyGyro")
+        or v:IsA("AlignOrientation") then
+            v:Destroy()
+        end
+    end
 end
 
 -- nearest enemy + posisinya (dari CurrentPosition CFrameValue atau .Position)
@@ -89,6 +102,7 @@ local function findAndOpenDoor()
         local part = best.Parent:IsA("BasePart") and best.Parent
             or best.Parent:FindFirstChildWhichIsA("BasePart")
         if part then
+            clearMovers()
             hrp.CFrame = CFrame.new(part.Position + Vector3.new(0, 4, 2))
             task.wait(0.2)
         end
@@ -104,6 +118,7 @@ local function findAndOpenDoor()
         end
     end
     if best then
+        clearMovers()
         hrp.CFrame = CFrame.new(best.Position + Vector3.new(0, 4, 0))
         task.wait(0.1)
         pcall(function() firetouchinterest(hrp, best, 0) end)
@@ -134,6 +149,7 @@ local function farmLoop()
             if not enemy then task.wait(0.3); continue end
             if enemyPos then
                 statusText = "Farming: " .. enemy.Name
+                clearMovers()
                 hrp.CFrame = CFrame.new(enemyPos)
                 task.wait(0.05)
                 waitDead(enemy, 10)
@@ -480,4 +496,4 @@ toggle("Anti AFK", function(on)
     end
 end)
 
-print("[Archeron Hub] v1.4 loaded")
+print("[Archeron Hub] v1.5 loaded")
