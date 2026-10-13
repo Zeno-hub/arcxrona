@@ -1,4 +1,4 @@
--- Archeron Hub v2.1 | World NPC Auto Farm
+-- Archeron Hub v2.2 | World NPC Auto Farm
 -- Sidebar layout + World Teleport (BridgeNet) + auto-TP on NPC miss
 -- EnemyName attribute detection · Died attribute death check
 
@@ -67,7 +67,6 @@ local RARITY_COLOR = {
 -- LOGIC
 -- ════════════════════════════════════════════════════════
 local farmActive     = false
-local statusText     = "Idle"
 local selectedWorld  = 1
 local enabledEnemies = {}
 
@@ -137,34 +136,29 @@ local function farmLoop()
             end
         end
 
-        if #pool == 0 then statusText = "No enemies"; task.wait(1); continue end
+        if #pool == 0 then task.wait(1); continue end
 
         local enemy = pool[math.random(#pool)]
         local part  = findNPC(enemy)
 
         if part then
             lastTpWorld = nil
-            statusText   = "⟶ " .. enemy.name
             clearMovers()
             hrp.CFrame = CFrame.new(part.Position)
             task.wait(0.05)
             waitDead(part, 15)
         else
-            -- auto-TP ke world yang benar kalau NPC ga ketemu
             local wname = w and w.name or ""
             if lastTpWorld ~= wname then
-                statusText  = "TP → " .. wname
                 tpWorld(wname)
                 lastTpWorld = wname
-                task.wait(3.5)   -- tunggu world load
+                task.wait(3.5)
             else
-                statusText = "Cari: " .. enemy.name
                 task.wait(0.8)
             end
         end
         task.wait(0.05)
     end
-    statusText = "Idle"
 end
 
 -- ════════════════════════════════════════════════════════
@@ -188,28 +182,27 @@ local C = {
     item  = Color3.fromRGB(9,    5,  21),
     sel   = Color3.fromRGB(23,  12,  52),
     bot   = Color3.fromRGB(8,    5,  20),
-    actS  = Color3.fromRGB(120, 60, 240),  -- active sidebar tab accent
+    actS  = Color3.fromRGB(120, 60, 240),
 }
 
-local GW     = 370   -- total width
-local SW     = 66    -- sidebar width
-local CW     = GW - SW
-local HDR_H  = 32
-local BOT_H  = 44
-local ROW_H  = 32
-local ITEM_H = 26
-local MAXVIS = 4
+local GW      = 395
+local SW      = 66
+local CW      = GW - SW
+local HDR_H   = 32
+local BOT_H   = 44
+local ROW_H   = 32
+local ITEM_H  = 26
+local CONTENT_H = 240
+local TOTAL_H   = HDR_H + CONTENT_H + BOT_H
 
--- ────────────────────────────────
--- helpers
--- ────────────────────────────────
+-- ─── helpers ───
 local function N(cls, props, parent)
     local o = Instance.new(cls)
     for k, v in pairs(props) do o[k] = v end
     if parent then o.Parent = parent end
     return o
 end
-local function CR(r, p) N("UICorner",   {CornerRadius=UDim.new(0,r)}, p) end
+local function CR(r, p) N("UICorner",  {CornerRadius=UDim.new(0,r)}, p) end
 local function ST(c, t, p) N("UIStroke",{Color=c, Thickness=t}, p) end
 
 local function makeDrag(handle, target)
@@ -251,10 +244,6 @@ local gui = N("ScreenGui", {
     Parent=(gethui and gethui()) or lp.PlayerGui,
 })
 
--- GUI height is FIXED — content scrolls inside, outer frame never moves
-local CONTENT_H = 200   -- fixed inner scroll area height
-local TOTAL_H   = HDR_H + CONTENT_H + BOT_H  -- 276px
-
 local main = N("Frame", {
     Size=UDim2.new(0,GW,0,TOTAL_H),
     Position=UDim2.new(0.5,-GW/2,0.4,-TOTAL_H/2),
@@ -273,17 +262,14 @@ local hdr = N("Frame", {
     Active=true, Parent=main,
 })
 CR(10, hdr)
--- fill bottom to kill lower rounded corners
 N("Frame",{Size=UDim2.new(1,0,0,10),Position=UDim2.new(0,0,1,-10),
     BackgroundColor3=C.hdr,BorderSizePixel=0,Parent=hdr})
 
--- accent notch left
 local notch = N("Frame",{
     Size=UDim2.new(0,3,0,18),Position=UDim2.new(0,10,0.5,-9),
     BackgroundColor3=C.accHi,BorderSizePixel=0,Parent=hdr,
 })
 CR(2, notch)
-
 N("TextLabel",{
     Size=UDim2.new(0,140,1,0),Position=UDim2.new(0,20,0,0),
     BackgroundTransparency=1,
@@ -292,8 +278,6 @@ N("TextLabel",{
     TextSize=11,Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left,Parent=hdr,
 })
-
--- version badge
 local vb = N("Frame",{
     Size=UDim2.new(0,30,0,14),Position=UDim2.new(0,164,0.5,-7),
     BackgroundColor3=C.acc,BackgroundTransparency=0.45,
@@ -301,10 +285,9 @@ local vb = N("Frame",{
 })
 CR(4,vb)
 N("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
-    Text="v2.1",TextColor3=Color3.fromRGB(195,150,255),
+    Text="v2.2",TextColor3=Color3.fromRGB(195,150,255),
     TextSize=8,Font=Enum.Font.GothamBold,Parent=vb})
 
--- close
 local closeBtn = N("TextButton",{
     Size=UDim2.new(0,20,0,20),Position=UDim2.new(1,-26,0.5,-10),
     BackgroundColor3=C.red,Text="×",
@@ -323,13 +306,13 @@ local sidebar = N("Frame",{
     Position=UDim2.new(0,0,0,HDR_H),
     BackgroundColor3=C.side,BorderSizePixel=0,Parent=main,
 })
--- right border
 N("Frame",{Size=UDim2.new(0,1,1,0),Position=UDim2.new(1,-1,0,0),
     BackgroundColor3=C.sep,BorderSizePixel=0,Parent=sidebar})
 
+-- non-emoji icons: ▶ for Main, ◈ for Settings
 local TABS = {
-    { label="⚔", name="Main",     icon="⚔" },
-    { label="⚙", name="Settings", icon="⚙" },
+    { label="▶", name="Main"     },
+    { label="◈", name="Settings" },
 }
 local activeTab = 1
 local tabBtns   = {}
@@ -341,27 +324,24 @@ for i, t in ipairs(TABS) do
         BackgroundColor3=i==1 and C.sel or C.side,BorderSizePixel=0,Parent=sidebar,
     })
     CR(6,tb)
-
-    -- active indicator strip (left edge)
     local strip = N("Frame",{
         Size=UDim2.new(0,3,0,28),Position=UDim2.new(0,0,0.5,-14),
         BackgroundColor3=i==1 and C.actS or C.side,BorderSizePixel=0,Parent=tb,
     })
     CR(2,strip)
-
-    N("TextLabel",{
+    local iconLbl = N("TextLabel",{
         Size=UDim2.new(1,0,0,22),Position=UDim2.new(0,0,0,5),
-        BackgroundTransparency=1,Text=t.icon,
+        BackgroundTransparency=1,Text=t.label,
         TextColor3=i==1 and Color3.fromRGB(185,130,255) or C.sub,
         TextSize=14,Font=Enum.Font.GothamBold,Parent=tb,
     })
-    N("TextLabel",{
+    local nameLbl = N("TextLabel",{
         Size=UDim2.new(1,0,0,12),Position=UDim2.new(0,0,1,-15),
         BackgroundTransparency=1,Text=t.name,
         TextColor3=i==1 and C.txt or C.sub,
         TextSize=8,Font=Enum.Font.Gotham,Parent=tb,
     })
-    tabBtns[i] = {frame=tb, strip=strip}
+    tabBtns[i] = {frame=tb, strip=strip, icon=iconLbl, name=nameLbl}
 
     local idx = i
     N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=tb}
@@ -370,25 +350,19 @@ for i, t in ipairs(TABS) do
         if prev then
             prev.frame.BackgroundColor3 = C.side
             prev.strip.BackgroundColor3 = C.side
-            -- icon + name color reset
-            for _, ch in ipairs(prev.frame:GetChildren()) do
-                if ch:IsA("TextLabel") then ch.TextColor3=C.sub end
-            end
+            prev.icon.TextColor3 = C.sub
+            prev.name.TextColor3 = C.sub
         end
         activeTab = idx
-        tb.BackgroundColor3 = C.sel
+        tb.BackgroundColor3   = C.sel
         strip.BackgroundColor3 = C.actS
-        for _, ch in ipairs(tb:GetChildren()) do
-            if ch:IsA("TextLabel") then
-                ch.TextColor3 = Color3.fromRGB(185,130,255)
-            end
-        end
-        -- swap content panels (future: settings panel)
+        iconLbl.TextColor3 = Color3.fromRGB(185,130,255)
+        nameLbl.TextColor3 = C.txt
     end)
 end
 
 -- ════════════════════════════════════════════════════════
--- CONTENT  (ScrollingFrame — GUI stays fixed, this scrolls)
+-- CONTENT ScrollingFrame (fixed size, inner scrolls)
 -- ════════════════════════════════════════════════════════
 local content = N("ScrollingFrame",{
     Size=UDim2.new(0,CW,0,CONTENT_H),
@@ -401,13 +375,12 @@ local content = N("ScrollingFrame",{
     Parent=main,
 })
 
--- forward declarations
 local doLayout, buildEnemyList
 local worldListOpen = false
 local worldItemFrames = {}
 
--- ─── WORLD ROW (dropdown trigger) ───
-local SECH = 20   -- section-header height
+-- ─── WORLD ROW ───
+local SECH = 20
 local worldRow = N("Frame",{
     Size=UDim2.new(1,0,0,ROW_H),Position=UDim2.new(0,0,0,0),
     BackgroundColor3=C.panel,BorderSizePixel=0,Parent=content,
@@ -428,23 +401,22 @@ local worldVal = N("TextLabel",{
 })
 local worldArrow = N("TextLabel",{
     Size=UDim2.new(0,14,1,0),Position=UDim2.new(1,-16,0,0),
-    BackgroundTransparency=1,Text="▾",
+    BackgroundTransparency=1,Text="►",
     TextColor3=C.sub,TextSize=8,Font=Enum.Font.GothamBold,Parent=worldRow,
 })
 N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=worldRow}
 ).MouseButton1Click:Connect(function()
     worldListOpen = not worldListOpen
-    worldArrow.Text = worldListOpen and "▴" or "▾"
+    worldArrow.Text = worldListOpen and "▾" or "►"
     doLayout()
 end)
 
--- ─── WORLD ITEMS (inside dropdown, absolute-positioned) ───
+-- ─── WORLD ITEMS ───
 local worldItemsFrame = N("Frame",{
     Size=UDim2.new(1,0,0,0),Position=UDim2.new(0,0,0,ROW_H),
     BackgroundColor3=C.item,BorderSizePixel=0,
     Visible=false,Parent=content,
 })
-
 for i, w in ipairs(WORLDS) do
     local item = N("Frame",{
         Size=UDim2.new(1,0,0,ITEM_H),
@@ -477,13 +449,12 @@ for i, w in ipairs(WORLDS) do
         selectedWorld=idx
         item.BackgroundColor3=C.sel; lbl.TextColor3=C.txt; wStrip.BackgroundColor3=C.actS
         worldVal.Text=w.name
-        worldListOpen=false; worldArrow.Text="▾"
+        worldListOpen=false; worldArrow.Text="►"
         resetEnemies(); buildEnemyList(); doLayout()
     end)
 end
 
--- ─── ENEMIES SECTION (always visible, positioned by doLayout) ───
--- Section header "ENEMIES"
+-- ─── ENEMIES SECTION HEADER ───
 local enemySecHdr = N("Frame",{
     Size=UDim2.new(1,0,0,SECH),Position=UDim2.new(0,0,0,ROW_H),
     BackgroundColor3=Color3.fromRGB(11,7,26),BorderSizePixel=0,Parent=content,
@@ -497,15 +468,14 @@ N("TextLabel",{
 N("Frame",{Size=UDim2.new(1,-10,0,1),Position=UDim2.new(0,5,1,-1),
     BackgroundColor3=C.sep,BorderSizePixel=0,Parent=enemySecHdr})
 
--- Enemy categories frame (always visible, grows with content)
+-- ─── ENEMY CATEGORIES CONTAINER ───
 local enemyCats = N("Frame",{
     Size=UDim2.new(1,0,0,0),Position=UDim2.new(0,0,0,ROW_H+SECH),
     BackgroundColor3=C.panel,BorderSizePixel=0,Parent=content,
 })
-N("UIListLayout",{SortOrder=Enum.SortOrder.LayoutOrder,Padding=UDim.new(0,0)},enemyList)
 
 -- ════════════════════════════════════════════════════════
--- BOTTOM BAR  (avatar · name · toggle · status)
+-- BOTTOM BAR
 -- ════════════════════════════════════════════════════════
 local botBar = N("Frame",{
     Size=UDim2.new(1,0,0,BOT_H),
@@ -515,7 +485,6 @@ local botBar = N("Frame",{
 N("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,0,0),
     BackgroundColor3=C.sep,BorderSizePixel=0,Parent=botBar})
 
--- circular avatar  (LEFT side)
 local avatarBg = N("Frame",{
     Size=UDim2.new(0,30,0,30),Position=UDim2.new(0,8,0.5,-15),
     BackgroundColor3=C.acc,BackgroundTransparency=0.5,
@@ -539,7 +508,6 @@ task.spawn(function()
     if ok and url then avatarImg.Image = url end
 end)
 
--- player display name  (next to avatar)
 N("TextLabel",{
     Size=UDim2.new(0,110,1,0),Position=UDim2.new(0,44,0,0),
     BackgroundTransparency=1,
@@ -548,13 +516,11 @@ N("TextLabel",{
     TextXAlignment=Enum.TextXAlignment.Left,Parent=botBar,
 })
 
--- vertical divider between profile and toggle section
 N("Frame",{
     Size=UDim2.new(0,1,0,24),Position=UDim2.new(1,-90,0.5,-12),
     BackgroundColor3=C.sep,BorderSizePixel=0,Parent=botBar,
 })
 
--- "Auto Farm" label  (right section)
 N("TextLabel",{
     Size=UDim2.new(0,50,1,0),Position=UDim2.new(1,-88,0,0),
     BackgroundTransparency=1,Text="Auto\nFarm",
@@ -563,7 +529,6 @@ N("TextLabel",{
     TextYAlignment=Enum.TextYAlignment.Center,Parent=botBar,
 })
 
--- toggle pill  (far right)
 local pill = N("Frame",{
     Size=UDim2.new(0,38,0,19),Position=UDim2.new(1,-46,0.5,-9),
     BackgroundColor3=C.tOff,BorderSizePixel=0,Parent=botBar,
@@ -575,7 +540,6 @@ local knob = N("Frame",{
 })
 CR(999,knob)
 
--- toggle logic
 local farmState = false
 local ti = TweenInfo.new(0.14, Enum.EasingStyle.Quad)
 
@@ -636,40 +600,36 @@ UIS.InputEnded:Connect(function(i)
 end)
 
 -- ════════════════════════════════════════════════════════
--- LAYOUT ENGINE  (GUI outer frame stays fixed — just reposition inner elements)
+-- LAYOUT ENGINE
 -- ════════════════════════════════════════════════════════
 doLayout = function()
-    local y = ROW_H  -- after worldRow
+    local y = ROW_H
 
     if worldListOpen then
         local h = #WORLDS * ITEM_H
-        worldItemsFrame.Visible = true
-        worldItemsFrame.Size    = UDim2.new(1,0,0,h)
-        worldItemsFrame.Position= UDim2.new(0,0,0,y)
+        worldItemsFrame.Visible  = true
+        worldItemsFrame.Size     = UDim2.new(1,0,0,h)
+        worldItemsFrame.Position = UDim2.new(0,0,0,y)
         y = y + h
     else
         worldItemsFrame.Visible = false
     end
 
-    -- enemy section header + categories always follow world
     enemySecHdr.Position = UDim2.new(0,0,0,y); y = y + SECH
     enemyCats.Position   = UDim2.new(0,0,0,y)
-    -- enemyCats height is set by buildEnemyList
 end
 
 -- ════════════════════════════════════════════════════════
--- ENEMY LIST BUILDER  (grouped by rarity category)
--- all 6 categories always shown, even if empty
+-- ENEMY LIST BUILDER  — per-category dropdown toggle
 -- ════════════════════════════════════════════════════════
-local CAT_H  = 20   -- category header row height
-local EMPTY_H= 22   -- "no enemies" placeholder row
+local CAT_H  = 26
+local EMPTY_H = 22
+local catOpen = {}   -- catOpen[r] = true/false
 
 buildEnemyList = function()
-    -- clear previous
     for _, c in ipairs(enemyCats:GetChildren()) do c:Destroy() end
 
     local w = WORLDS[selectedWorld]
-    -- group enemies by rarity
     local byRarity = {}
     for r = 1, 6 do byRarity[r] = {} end
     if w then
@@ -684,20 +644,22 @@ buildEnemyList = function()
         local rc   = RARITY_COLOR[r]
         local rn   = RARITY_NAME[r]
         local list = byRarity[r]
+        local isOpen = catOpen[r] or false
 
-        -- category header
-        local catHdr = N("Frame",{
+        -- category header (clickable toggle)
+        local catHdr = N("TextButton",{
             Size=UDim2.new(1,0,0,CAT_H),Position=UDim2.new(0,0,0,y),
-            BackgroundColor3=Color3.fromRGB(10,6,24),BorderSizePixel=0,Parent=enemyCats,
+            BackgroundColor3=Color3.fromRGB(10,6,24),BorderSizePixel=0,
+            Text="",AutoButtonColor=false,Parent=enemyCats,
         })
         -- colored left strip
         local cs = N("Frame",{
-            Size=UDim2.new(0,2,0,12),Position=UDim2.new(0,8,0.5,-6),
+            Size=UDim2.new(0,2,0,14),Position=UDim2.new(0,8,0.5,-7),
             BackgroundColor3=rc,BorderSizePixel=0,Parent=catHdr,
         })
         CR(1,cs)
         N("TextLabel",{
-            Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,16,0,0),
+            Size=UDim2.new(1,-44,1,0),Position=UDim2.new(0,16,0,0),
             BackgroundTransparency=1,Text=rn,
             TextColor3=rc,TextSize=8,Font=Enum.Font.GothamBold,
             TextXAlignment=Enum.TextXAlignment.Left,Parent=catHdr,
@@ -705,7 +667,7 @@ buildEnemyList = function()
         -- count badge
         if #list > 0 then
             local cnt = N("TextLabel",{
-                Size=UDim2.new(0,20,0,14),Position=UDim2.new(1,-24,0.5,-7),
+                Size=UDim2.new(0,20,0,14),Position=UDim2.new(1,-44,0.5,-7),
                 BackgroundColor3=rc,BackgroundTransparency=0.6,
                 BorderSizePixel=0,
                 Text=tostring(#list),TextColor3=rc,
@@ -713,57 +675,79 @@ buildEnemyList = function()
             })
             CR(4,cnt)
         end
+        -- dropdown arrow: ► closed, ▾ open
+        local arrowLbl = N("TextLabel",{
+            Size=UDim2.new(0,14,1,0),Position=UDim2.new(1,-16,0,0),
+            BackgroundTransparency=1,
+            Text=isOpen and "▾" or "►",
+            TextColor3=Color3.fromRGB(95,65,155),
+            TextSize=8,Font=Enum.Font.GothamBold,Parent=catHdr,
+        })
         y = y + CAT_H
 
-        if #list == 0 then
-            -- empty placeholder
-            local ph = N("Frame",{
-                Size=UDim2.new(1,0,0,EMPTY_H),Position=UDim2.new(0,0,0,y),
-                BackgroundColor3=C.item,BorderSizePixel=0,Parent=enemyCats,
-            })
-            N("TextLabel",{
-                Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
-                Text="—",TextColor3=C.sep,TextSize=9,
-                Font=Enum.Font.Gotham,Parent=ph,
-            })
-            y = y + EMPTY_H
-        else
-            for _, entry in ipairs(list) do
-                local e   = entry.enemy
-                local idx = entry.idx
-                local item = N("Frame",{
-                    Size=UDim2.new(1,0,0,ITEM_H),Position=UDim2.new(0,0,0,y),
+        -- close-state placeholder so scrollbar stays consistent
+        -- nothing rendered below when closed
+
+        -- enemy items (only when open)
+        if isOpen then
+            if #list == 0 then
+                local ph = N("Frame",{
+                    Size=UDim2.new(1,0,0,EMPTY_H),Position=UDim2.new(0,0,0,y),
                     BackgroundColor3=C.item,BorderSizePixel=0,Parent=enemyCats,
                 })
-                local chk = N("Frame",{
-                    Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,10,0.5,-6),
-                    BackgroundColor3=enabledEnemies[idx] and C.acc or C.side,
-                    BorderSizePixel=0,Parent=item,
-                })
-                CR(3,chk)
                 N("TextLabel",{
-                    Size=UDim2.new(1,-28,1,0),Position=UDim2.new(0,28,0,0),
-                    BackgroundTransparency=1,Text=e.name,
-                    TextColor3=C.txt,TextSize=9,Font=Enum.Font.Gotham,
-                    TextXAlignment=Enum.TextXAlignment.Left,Parent=item,
+                    Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
+                    Text="—",TextColor3=C.sep,TextSize=9,
+                    Font=Enum.Font.Gotham,Parent=ph,
                 })
-                N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=item}
-                ).MouseButton1Click:Connect(function()
-                    enabledEnemies[idx] = not enabledEnemies[idx]
-                    TweenSvc:Create(chk, TweenInfo.new(0.1),{
+                y = y + EMPTY_H
+            else
+                for _, entry in ipairs(list) do
+                    local e   = entry.enemy
+                    local idx = entry.idx
+                    local item = N("Frame",{
+                        Size=UDim2.new(1,0,0,ITEM_H),Position=UDim2.new(0,0,0,y),
+                        BackgroundColor3=C.item,BorderSizePixel=0,Parent=enemyCats,
+                    })
+                    local chk = N("Frame",{
+                        Size=UDim2.new(0,12,0,12),Position=UDim2.new(0,14,0.5,-6),
                         BackgroundColor3=enabledEnemies[idx] and C.acc or C.side,
-                    }):Play()
-                end)
-                y = y + ITEM_H
+                        BorderSizePixel=0,Parent=item,
+                    })
+                    CR(3,chk)
+                    N("TextLabel",{
+                        Size=UDim2.new(1,-32,1,0),Position=UDim2.new(0,32,0,0),
+                        BackgroundTransparency=1,Text=e.name,
+                        TextColor3=C.txt,TextSize=9,Font=Enum.Font.Gotham,
+                        TextXAlignment=Enum.TextXAlignment.Left,Parent=item,
+                    })
+                    N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=item}
+                    ).MouseButton1Click:Connect(function()
+                        enabledEnemies[idx] = not enabledEnemies[idx]
+                        TweenSvc:Create(chk, TweenInfo.new(0.1),{
+                            BackgroundColor3=enabledEnemies[idx] and C.acc or C.side,
+                        }):Play()
+                    end)
+                    y = y + ITEM_H
+                end
             end
         end
 
-        -- separator between categories
+        -- separator
         N("Frame",{
             Size=UDim2.new(1,-10,0,1),Position=UDim2.new(0,5,0,y),
             BackgroundColor3=C.sep,BorderSizePixel=0,Parent=enemyCats,
         })
         y = y + 1
+
+        -- wire toggle AFTER y is final for this block (capture r)
+        local capturedR = r
+        local capturedArrow = arrowLbl
+        catHdr.MouseButton1Click:Connect(function()
+            catOpen[capturedR] = not catOpen[capturedR]
+            buildEnemyList()
+            doLayout()
+        end)
     end
 
     enemyCats.Size = UDim2.new(1,0,0,y)
