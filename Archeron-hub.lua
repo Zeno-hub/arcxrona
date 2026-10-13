@@ -1,4 +1,3 @@
-local ok,err=pcall(function()
 -- Archeron Hub v2.4 | World Farm + Dungeon/Trial Auto
 -- Horizontal tabs · Rounded cards · BridgeNet TP
 
@@ -99,7 +98,7 @@ local enabledEnemies = {}
 local function resetEnemies()
     enabledEnemies = {}
     local w = WORLDS[selectedWorld]
-    if w then for i=1,#w.enemies do enabledEnemies[i]=false end end
+    if w then for i=1,#w.enemies do enabledEnemies[i]=false end end end
     
 resetEnemies()
 
@@ -668,8 +667,6 @@ buildEnemyList=function()
     enemyItemsCard.Size=UDim2.new(1,-(CARD_M*2),0,#enemies*ITEM_H)
 end
 
-buildEnemyList(); doMainLayout()
-
 local farmCard=makeCard(scrollMain,0,ROW_H)
 N("TextLabel",{Size=UDim2.new(0,100,1,0),Position=UDim2.new(0,12,0,0),
     BackgroundTransparency=1,Text="Auto Farm",
@@ -689,6 +686,8 @@ N("TextButton",{Size=UDim2.new(0,96,1,0),Position=UDim2.new(1,-100,0,0),
     }):Play()
     if farmState then task.spawn(farmLoop) end
 end)
+
+buildEnemyList(); doMainLayout()
 
 -- ════════════════════════════════════════════════════════
 -- TAB 2: GAMEMODE
@@ -882,4 +881,3 @@ UIS.InputEnded:Connect(function(i)
         if not dotMov then main.Visible=true;dot.Visible=false end
     end
 end)
-if not ok then warn("ARCHERON ERROR: "..tostring(err)) end
