@@ -187,17 +187,18 @@ local function findNearestDoor()
     local hrpPos = (hrp and hrp.Position) or Vector3.new()
     local best, bestD, bestPP = nil, math.huge, nil
     local ok, mapFolder = pcall(function()
-        return workspace.Client.Maps["Dungeon Easy"]
+        return workspace.Client.Maps["Dungeon Easy"].Map
     end)
     if not ok or not mapFolder then return nil, nil end
-    for _,v in ipairs(mapFolder:GetDescendants()) do
-        if v:IsA("Model") and v.Parent and v.Parent.Name == "Doors" then
-            local mainPart = v:FindFirstChild("Main")
-            local openPP   = v:FindFirstChild("OpenDoor")
-            if mainPart and mainPart:IsA("BasePart")
-            and openPP and openPP:IsA("ProximityPrompt") then
-                local d = (mainPart.Position - hrpPos).Magnitude
-                if d < bestD then bestD = d; best = mainPart; bestPP = openPP end
+    for _, room in ipairs(mapFolder:GetChildren()) do
+        local doors = room:FindFirstChild("Doors")
+        if doors then
+            for _, doorPart in ipairs(doors:GetChildren()) do
+                local openPP = doorPart:FindFirstChild("OpenDoor")
+                if doorPart:IsA("BasePart") and openPP and openPP:IsA("ProximityPrompt") then
+                    local d = (doorPart.Position - hrpPos).Magnitude
+                    if d < bestD then bestD = d; best = doorPart; bestPP = openPP end
+                end
             end
         end
     end
@@ -303,27 +304,6 @@ local function getCullingWave()
     return ok and tonumber(v) or 0
 end
 
-local function findNearestCullingDoor()
-    local hrpPos = (hrp and hrp.Position) or Vector3.new()
-    local best, bestD, bestPP = nil, math.huge, nil
-    local ok, mapFolder = pcall(function()
-        return workspace.Client.Maps["Culling Game"]
-    end)
-    if not ok or not mapFolder then return nil, nil end
-    for _,v in ipairs(mapFolder:GetDescendants()) do
-        if v:IsA("Model") and v.Parent and v.Parent.Name == "Doors" then
-            local mainPart = v:FindFirstChild("Main")
-            local openPP   = v:FindFirstChild("OpenDoor")
-            if mainPart and mainPart:IsA("BasePart")
-            and openPP and openPP:IsA("ProximityPrompt") then
-                local d = (mainPart.Position - hrpPos).Magnitude
-                if d < bestD then bestD = d; best = mainPart; bestPP = openPP end
-            end
-        end
-    end
-    return best, bestPP
-end
-
 local function cullingLoop()
     joinCullingGame(); task.wait(4)
     local lastWave = getCullingWave()
@@ -342,17 +322,12 @@ local function cullingLoop()
         task.wait(1.5)
         local curWave = getCullingWave()
         if curWave >= cullingLeaveRoom then cullingActive = false; leaveGamemode(); break end
-        local door, doorPP = findNearestCullingDoor()
-        if door and doorPP then
-            clearMovers(); hrp.CFrame = CFrame.new(door.Position); tpFighters()
-            task.wait(0.3); pcall(fireproximityprompt, doorPP)
-            local wc = 0
-            while cullingActive and wc < 20 do
-                local w = getCullingWave()
-                if w ~= lastWave then lastWave = w; break end
-                task.wait(0.5); wc = wc + 1
-            end
-        else task.wait(1) end
+        local waitCycles = 0
+        while cullingActive and waitCycles < 60 do
+            local w = getCullingWave()
+            if w ~= lastWave then lastWave = w; break end
+            task.wait(0.5); waitCycles = waitCycles + 1
+        end
     end
 end
 
