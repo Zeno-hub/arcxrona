@@ -1,6 +1,5 @@
--- Archeron Hub v2.3 | World NPC Auto Farm
--- Sidebar layout + World Teleport (BridgeNet) + auto-TP on NPC miss
--- EnemyName attribute detection · Died attribute death check
+-- Archeron Hub v2.4 | World Farm + Dungeon/Trial Auto
+-- Horizontal tabs · Rounded cards · BridgeNet TP
 
 local Players  = game:GetService("Players")
 local TweenSvc = game:GetService("TweenService")
@@ -15,8 +14,7 @@ lp.CharacterAdded:Connect(function(c)
 end)
 
 -- ════════════════════════════════════════════════════════
--- DATA  (isi nama + rarity dari lo nanti)
--- rarity: 1=Easy  2=Medium  3=Hard  4=Insane  5=Boss  6=Secret
+-- DATA
 -- ════════════════════════════════════════════════════════
 local WORLDS = {
     { name = "Heaven Island", enemies = {
@@ -52,61 +50,26 @@ local WORLDS = {
         { name = "Chaos Arthur", rarity = 6 },
     }},
 }
-
 local RARITY_COLOR = {
-    Color3.fromRGB(80,  200,  80),   -- 1 Easy
-    Color3.fromRGB(80,  140, 255),   -- 2 Medium
-    Color3.fromRGB(255, 140,  40),   -- 3 Hard
-    Color3.fromRGB(220,  50,  50),   -- 4 Insane
-    Color3.fromRGB(200,  60, 255),   -- 5 Boss
-    Color3.fromRGB(255, 210,   0),   -- 6 Secret
+    Color3.fromRGB(80, 200, 80),
+    Color3.fromRGB(80, 140,255),
+    Color3.fromRGB(255,140, 40),
+    Color3.fromRGB(220, 50, 50),
+    Color3.fromRGB(200, 60,255),
+    Color3.fromRGB(255,210,  0),
 }
 
 -- ════════════════════════════════════════════════════════
--- LOGIC
+-- SHARED LOGIC
 -- ════════════════════════════════════════════════════════
-local farmActive     = false
-local selectedWorld  = 1
-local enabledEnemies = {}
-
-local function resetEnemies()
-    enabledEnemies = {}
-    local w = WORLDS[selectedWorld]
-    if w then for i = 1, #w.enemies do enabledEnemies[i] = true end end
-end
-resetEnemies()
-
 local function clearMovers()
     local h = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
     if not h then return end
     for _, v in pairs(h:GetChildren()) do
-        if  v:IsA("BodyPosition")    or v:IsA("AlignPosition")
-        or  v:IsA("BodyVelocity")    or v:IsA("BodyGyro")
-        or  v:IsA("AlignOrientation") then v:Destroy() end
+        if v:IsA("BodyPosition") or v:IsA("AlignPosition")
+        or v:IsA("BodyVelocity") or v:IsA("BodyGyro")
+        or v:IsA("AlignOrientation") then v:Destroy() end
     end
-end
-
-local function tpWorld(worldName)
-    local ok, bn = pcall(function() return RS:WaitForChild("BridgeNet", 5) end)
-    if not ok or not bn then return end
-    local ok2, ev = pcall(function() return bn:WaitForChild("dataRemoteEvent", 5) end)
-    if not ok2 or not ev then return end
-    ev:FireServer({
-        {"\x01", "\xBE\x05\xDD\t\x01qC\x94\x82V\xEA]\xE2/@\xDF",
-         {"General","Maps","Teleport", worldName, n=4}},
-        "\x02"
-    })
-end
-
-local function findNPC(enemy)
-    local hits = {}
-    for _, v in ipairs(workspace:GetDescendants()) do
-        if v:IsA("BasePart") and not v:GetAttribute("Died") then
-            local en = v:GetAttribute("EnemyName")
-            if en and en == enemy.name then table.insert(hits, v) end
-        end
-    end
-    return #hits > 0 and hits[math.random(#hits)] or nil
 end
 
 local function waitDead(part, timeout)
@@ -119,450 +82,764 @@ local function waitDead(part, timeout)
     task.wait(0.15)
 end
 
-local function farmLoop()
-    local lastTpWorld = nil
-    while farmActive do
-        char = lp.Character
-        if not char then task.wait(1); continue end
-        hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then task.wait(1); continue end
+local function fireBridgeNet(payload)
+    local ok, bn = pcall(function() return RS:WaitForChild("BridgeNet",5) end)
+    if not ok or not bn then return end
+    local ok2, ev = pcall(function() return bn:WaitForChild("dataRemoteEvent",5) end)
+    if not ok2 or not ev then return end
+    ev:FireServer(payload)
+end
 
-        local pool = {}
-        local w = WORLDS[selectedWorld]
-        if w then
-            for i, e in ipairs(w.enemies) do
-                if enabledEnemies[i] then table.insert(pool, e) end
-            end
+-- ── WORLD FARM ──────────────────────────────────────────
+local farmActive     = false
+local selectedWorld  = 1
+local enabledEnemies = {}
+
+local function resetEnemies()
+    enabledEnemies = {}
+    local w = WORLDS[selectedWorld]
+    if w then for i=1,#w.enemies do enabledEnemies[i]=true end end
+end
+resetEnemies()
+
+local function tpWorld(name)
+    fireBridgeNet({
+        {"\x01","\xBE\x05\xDD\t\x01qC\x94\x82V\xEA]\xE2/@\xDF",
+         {"General","Maps","Teleport",name,n=4}},"\x02"
+    })
+end
+
+local function findNPC(enemy)
+    local hits={}
+    for _,v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("BasePart") and not v:GetAttribute("Died") then
+            local en=v:GetAttribute("EnemyName")
+            if en and en==enemy.name then table.insert(hits,v) end
         end
+    end
+    return #hits>0 and hits[math.random(#hits)] or nil
+end
 
-        if #pool == 0 then task.wait(1); continue end
-
-        local enemy = pool[math.random(#pool)]
-        local part  = findNPC(enemy)
-
+local function farmLoop()
+    local lastTpW=nil
+    while farmActive do
+        char=lp.Character; if not char then task.wait(1);continue end
+        hrp=char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1);continue end
+        local pool={}; local w=WORLDS[selectedWorld]
+        if w then for i,e in ipairs(w.enemies) do
+            if enabledEnemies[i] then table.insert(pool,e) end
+        end end
+        if #pool==0 then task.wait(1);continue end
+        local enemy=pool[math.random(#pool)]; local part=findNPC(enemy)
         if part then
-            lastTpWorld = nil
-            clearMovers()
-            hrp.CFrame = CFrame.new(part.Position)
-            task.wait(0.05)
-            waitDead(part, 15)
+            lastTpW=nil; clearMovers()
+            hrp.CFrame=CFrame.new(part.Position); task.wait(0.05); waitDead(part,15)
         else
-            local wname = w and w.name or ""
-            if lastTpWorld ~= wname then
-                tpWorld(wname)
-                lastTpWorld = wname
-                task.wait(3.5)
-            else
-                task.wait(0.8)
-            end
+            local wn=w and w.name or ""
+            if lastTpW~=wn then tpWorld(wn); lastTpW=wn; task.wait(3.5)
+            else task.wait(0.8) end
         end
         task.wait(0.05)
+    end
+end
+
+-- ── DUNGEON / TRIAL ─────────────────────────────────────
+local dungeonActive   = false
+local trialActive     = false
+local dungeonLeaveRoom = 10
+local trialLeaveWave  = 10
+
+local function findEnemiesInDungeon()
+    local list={}
+    for _,v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("BasePart") and not v:GetAttribute("Died")
+        and v:GetAttribute("EnemyName") then table.insert(list,v) end
+    end
+    return list
+end
+
+local function findNearestDoor()
+    local hrpPos=(hrp and hrp.Position) or Vector3.new()
+    local best,bestD=nil,math.huge
+    for _,v in ipairs(workspace:GetDescendants()) do
+        if v.Name=="Main" and v:IsA("BasePart") then
+            local p=v.Parent
+            if p and p:IsA("Model") and p.Name=="Door" then
+                local gp=p.Parent
+                if gp and gp.Name=="Doors" then
+                    local d=(v.Position-hrpPos).Magnitude
+                    if d<bestD then bestD=d;best=v end
+                end
+            end
+        end
+    end
+    return best
+end
+
+local function triggerDoor(doorPart)
+    local mdl=doorPart.Parent
+    local pp=nil
+    for _,v in ipairs(mdl:GetDescendants()) do
+        if v:IsA("ProximityPrompt") then pp=v;break end
+    end
+    if pp then pcall(fireproximityprompt,pp)
+    else
+        pcall(firetouchinterest,hrp,doorPart,0)
+        task.wait(0.1)
+        pcall(firetouchinterest,hrp,doorPart,1)
+    end
+end
+
+local function joinGamemode(name)
+    fireBridgeNet({
+        {"\x01","\xE8]d\xCCs7I\x05\x83!\xB6\xCF+<\xD5F",
+         {"General","Gamemodes","Join",name,n=4}},"\x02"
+    })
+end
+
+local function dungeonLoop()
+    joinGamemode("Dungeon Easy"); task.wait(4)
+    local room=0
+    while dungeonActive do
+        char=lp.Character; if not char then task.wait(1);continue end
+        hrp=char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1);continue end
+        -- clear all enemies in current room
+        local tries=40
+        while dungeonActive and tries>0 do
+            local en=findEnemiesInDungeon()
+            if #en==0 then break end
+            local t=en[math.random(#en)]
+            clearMovers(); hrp.CFrame=CFrame.new(t.Position)
+            task.wait(0.05); waitDead(t,15); tries=tries-1
+        end
+        if not dungeonActive then break end
+        -- check leave
+        if room>=dungeonLeaveRoom then dungeonActive=false;break end
+        -- go to next door
+        task.wait(0.4)
+        local door=findNearestDoor()
+        if door then
+            clearMovers(); hrp.CFrame=CFrame.new(door.Position)
+            task.wait(0.3); triggerDoor(door); task.wait(2.5)
+            room=room+1
+        else task.wait(1) end
+    end
+end
+
+local function trialLoop()
+    joinGamemode("Trial Easy"); task.wait(4)
+    local wave=0
+    while trialActive do
+        char=lp.Character; if not char then task.wait(1);continue end
+        hrp=char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1);continue end
+        local tries=40
+        while trialActive and tries>0 do
+            local en=findEnemiesInDungeon()
+            if #en==0 then break end
+            local t=en[math.random(#en)]
+            clearMovers(); hrp.CFrame=CFrame.new(t.Position)
+            task.wait(0.05); waitDead(t,15); tries=tries-1
+        end
+        if not trialActive then break end
+        if wave>=trialLeaveWave then trialActive=false;break end
+        -- wait for next wave spawn (enemy count resets)
+        local waitCycles=0
+        while trialActive and waitCycles<60 do
+            if #findEnemiesInDungeon()>0 then wave=wave+1;break end
+            task.wait(0.5); waitCycles=waitCycles+1
+        end
     end
 end
 
 -- ════════════════════════════════════════════════════════
 -- GUI CONSTANTS
 -- ════════════════════════════════════════════════════════
-local C = {
-    bg    = Color3.fromRGB(7,   4,  18),
-    side  = Color3.fromRGB(10,  6,  24),
-    panel = Color3.fromRGB(13,  9,  30),
-    hdr   = Color3.fromRGB(9,   6,  22),
-    acc   = Color3.fromRGB(95,  45, 205),
-    accHi = Color3.fromRGB(135, 75, 255),
-    txt   = Color3.fromRGB(210, 188, 255),
-    sub   = Color3.fromRGB(95,  65, 155),
-    tOn   = Color3.fromRGB(75,  28, 185),
-    tOff  = Color3.fromRGB(32,  18,  58),
-    kOn   = Color3.fromRGB(185, 135, 255),
-    kOff  = Color3.fromRGB(110,  65, 175),
-    red   = Color3.fromRGB(178,  32,  52),
-    sep   = Color3.fromRGB(45,  22,  90),
-    item  = Color3.fromRGB(9,    5,  21),
-    sel   = Color3.fromRGB(23,  12,  52),
-    bot   = Color3.fromRGB(8,    5,  20),
-    actS  = Color3.fromRGB(120,  60, 240),
+local C={
+    bg    =Color3.fromRGB( 7,  4, 18),
+    side  =Color3.fromRGB(10,  6, 24),
+    panel =Color3.fromRGB(13,  9, 30),
+    card  =Color3.fromRGB(16, 11, 36),   -- card bg (slightly lighter)
+    hdr   =Color3.fromRGB( 9,  6, 22),
+    acc   =Color3.fromRGB(95, 45,205),
+    accHi =Color3.fromRGB(135,75,255),
+    txt   =Color3.fromRGB(210,188,255),
+    sub   =Color3.fromRGB(95, 65,155),
+    tOn   =Color3.fromRGB(75, 28,185),
+    tOff  =Color3.fromRGB(32, 18, 58),
+    kOn   =Color3.fromRGB(185,135,255),
+    kOff  =Color3.fromRGB(110, 65,175),
+    red   =Color3.fromRGB(178, 32, 52),
+    sep   =Color3.fromRGB(45,  22, 90),
+    item  =Color3.fromRGB( 9,  5, 21),
+    sel   =Color3.fromRGB(23, 12, 52),
+    bot   =Color3.fromRGB( 8,  5, 20),
+    actS  =Color3.fromRGB(120,60,240),
+    tabAct=Color3.fromRGB(80, 35,180),
+    input =Color3.fromRGB(18, 11, 40),
 }
 
-local GW        = 510
-local SW        = 68
-local CW        = GW - SW
-local HDR_H     = 34
-local BOT_H     = 48
-local ROW_H     = 34
-local ITEM_H    = 28
-local CONTENT_H = 268
-local TOTAL_H   = HDR_H + CONTENT_H + BOT_H   -- 350
+local GW       = 510
+local HDR_H    = 34
+local TBAR_H   = 34   -- horizontal tab bar
+local BOT_H    = 48
+local CONT_H   = 246
+local TOTAL_H  = HDR_H + TBAR_H + CONT_H + BOT_H  -- 362
+local ROW_H    = 34
+local ITEM_H   = 28
+local CARD_M   = 6    -- card margin from edges
+local CARD_R   = 8    -- card corner radius
 
--- ─── helpers ───
-local function N(cls, props, parent)
-    local o = Instance.new(cls)
-    for k, v in pairs(props) do o[k] = v end
-    if parent then o.Parent = parent end
+local function N(cls,props,parent)
+    local o=Instance.new(cls)
+    for k,v in pairs(props) do o[k]=v end
+    if parent then o.Parent=parent end
     return o
 end
-local function CR(r, p) N("UICorner",  {CornerRadius=UDim.new(0,r)}, p) end
-local function ST(c, t, p) N("UIStroke",{Color=c, Thickness=t}, p) end
+local function CR(r,p) N("UICorner",{CornerRadius=UDim.new(0,r)},p) end
+local function ST(c,t,p) N("UIStroke",{Color=c,Thickness=t},p) end
 
-local function makeDrag(handle, target)
-    local mv = target or handle
-    local drag, s, o, li = false, nil, nil, nil
+local function makeDrag(handle,target)
+    local mv=target or handle
+    local drag,s,o,li=false,nil,nil,nil
     handle.InputBegan:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1
-        or i.UserInputType == Enum.UserInputType.Touch then
-            drag = true; s = i.Position; o = mv.Position
-        end
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then
+            drag=true;s=i.Position;o=mv.Position end
     end)
     handle.InputChanged:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseMovement
-        or i.UserInputType == Enum.UserInputType.Touch then li = i end
+        if i.UserInputType==Enum.UserInputType.MouseMovement
+        or i.UserInputType==Enum.UserInputType.Touch then li=i end
     end)
     UIS.InputChanged:Connect(function(i)
-        if i == li and drag then
-            local d = i.Position - s
-            mv.Position = UDim2.new(o.X.Scale, o.X.Offset+d.X, o.Y.Scale, o.Y.Offset+d.Y)
+        if i==li and drag then
+            local d=i.Position-s
+            mv.Position=UDim2.new(o.X.Scale,o.X.Offset+d.X,o.Y.Scale,o.Y.Offset+d.Y)
         end
     end)
     UIS.InputEnded:Connect(function(i)
-        if i.UserInputType == Enum.UserInputType.MouseButton1
-        or i.UserInputType == Enum.UserInputType.Touch then drag = false end
+        if i.UserInputType==Enum.UserInputType.MouseButton1
+        or i.UserInputType==Enum.UserInputType.Touch then drag=false end
     end)
+end
+
+-- make a pill toggle
+local function makePill(parent, xRight, color)
+    local pill=N("Frame",{
+        Size=UDim2.new(0,40,0,20),
+        Position=UDim2.new(1,xRight,0.5,-10),
+        BackgroundColor3=C.tOff,BorderSizePixel=0,Parent=parent,
+    })
+    CR(999,pill)
+    local knob=N("Frame",{
+        Size=UDim2.new(0,16,0,16),Position=UDim2.new(0,2,0.5,-8),
+        BackgroundColor3=C.kOff,BorderSizePixel=0,Parent=pill,
+    })
+    CR(999,knob)
+    return pill,knob
 end
 
 -- ════════════════════════════════════════════════════════
 -- SCREEN GUI + MAIN FRAME
 -- ════════════════════════════════════════════════════════
 pcall(function()
-    local old = lp.PlayerGui:FindFirstChild("ArcheronHub")
-    if old then old:Destroy() end
+    local old=lp.PlayerGui:FindFirstChild("ArcheronHub"); if old then old:Destroy() end
 end)
 
-local gui = N("ScreenGui", {
-    Name="ArcheronHub", ResetOnSpawn=false,
+local gui=N("ScreenGui",{
+    Name="ArcheronHub",ResetOnSpawn=false,
     ZIndexBehavior=Enum.ZIndexBehavior.Sibling,
     Parent=(gethui and gethui()) or lp.PlayerGui,
 })
 
-local main = N("Frame", {
+local main=N("Frame",{
     Size=UDim2.new(0,GW,0,TOTAL_H),
     Position=UDim2.new(0.5,-GW/2,0.4,-TOTAL_H/2),
-    BackgroundColor3=C.bg, BorderSizePixel=0,
-    ClipsDescendants=true, Parent=gui,
+    BackgroundColor3=C.bg,BorderSizePixel=0,
+    ClipsDescendants=true,Parent=gui,
 })
-CR(10, main)
-ST(C.sep, 1.2, main)
+CR(10,main); ST(C.sep,1.2,main)
 
 -- ════════════════════════════════════════════════════════
 -- HEADER
 -- ════════════════════════════════════════════════════════
-local hdr = N("Frame", {
+local hdr=N("Frame",{
     Size=UDim2.new(1,0,0,HDR_H),
-    BackgroundColor3=C.hdr, BorderSizePixel=0,
-    Active=true, Parent=main,
+    BackgroundColor3=C.hdr,BorderSizePixel=0,Active=true,Parent=main,
 })
-CR(10, hdr)
+CR(10,hdr)
 N("Frame",{Size=UDim2.new(1,0,0,10),Position=UDim2.new(0,0,1,-10),
     BackgroundColor3=C.hdr,BorderSizePixel=0,Parent=hdr})
 
-local notch = N("Frame",{
-    Size=UDim2.new(0,3,0,18),Position=UDim2.new(0,12,0.5,-9),
-    BackgroundColor3=C.accHi,BorderSizePixel=0,Parent=hdr,
-})
-CR(2, notch)
-N("TextLabel",{
-    Size=UDim2.new(0,160,1,0),Position=UDim2.new(0,22,0,0),
-    BackgroundTransparency=1, Text="ARCHERON  HUB",
+local notch=N("Frame",{Size=UDim2.new(0,3,0,18),Position=UDim2.new(0,12,0.5,-9),
+    BackgroundColor3=C.accHi,BorderSizePixel=0,Parent=hdr})
+CR(2,notch)
+N("TextLabel",{Size=UDim2.new(0,170,1,0),Position=UDim2.new(0,22,0,0),
+    BackgroundTransparency=1,Text="ARCHERON  HUB",
     TextColor3=Color3.fromRGB(160,100,255),
     TextSize=12,Font=Enum.Font.GothamBold,
-    TextXAlignment=Enum.TextXAlignment.Left,Parent=hdr,
-})
-local vb = N("Frame",{
-    Size=UDim2.new(0,32,0,15),Position=UDim2.new(0,186,0.5,-7),
-    BackgroundColor3=C.acc,BackgroundTransparency=0.45,
-    BorderSizePixel=0,Parent=hdr,
-})
+    TextXAlignment=Enum.TextXAlignment.Left,Parent=hdr})
+local vb=N("Frame",{Size=UDim2.new(0,32,0,15),Position=UDim2.new(0,196,0.5,-7),
+    BackgroundColor3=C.acc,BackgroundTransparency=0.45,BorderSizePixel=0,Parent=hdr})
 CR(4,vb)
 N("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
-    Text="v2.3",TextColor3=Color3.fromRGB(195,150,255),
+    Text="v2.4",TextColor3=Color3.fromRGB(195,150,255),
     TextSize=8,Font=Enum.Font.GothamBold,Parent=vb})
 
-local closeBtn = N("TextButton",{
+local closeBtn=N("TextButton",{
     Size=UDim2.new(0,22,0,22),Position=UDim2.new(1,-28,0.5,-11),
-    BackgroundColor3=C.red,Text="×",
-    TextColor3=Color3.fromRGB(255,255,255),
-    TextSize=15,Font=Enum.Font.GothamBold,
-    BorderSizePixel=0,Parent=hdr,
+    BackgroundColor3=C.red,Text="×",TextColor3=Color3.fromRGB(255,255,255),
+    TextSize=15,Font=Enum.Font.GothamBold,BorderSizePixel=0,Parent=hdr,
 })
 CR(5,closeBtn)
-makeDrag(hdr, main)
+makeDrag(hdr,main)
 
 -- ════════════════════════════════════════════════════════
--- SIDEBAR
+-- HORIZONTAL TAB BAR  (lonjong ke samping, pill style)
 -- ════════════════════════════════════════════════════════
-local sidebar = N("Frame",{
-    Size=UDim2.new(0,SW,0,CONTENT_H),
-    Position=UDim2.new(0,0,0,HDR_H),
+local tabBar=N("Frame",{
+    Size=UDim2.new(1,0,0,TBAR_H),Position=UDim2.new(0,0,0,HDR_H),
     BackgroundColor3=C.side,BorderSizePixel=0,Parent=main,
 })
-N("Frame",{Size=UDim2.new(0,1,1,0),Position=UDim2.new(1,-1,0,0),
-    BackgroundColor3=C.sep,BorderSizePixel=0,Parent=sidebar})
+N("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,1,-1),
+    BackgroundColor3=C.sep,BorderSizePixel=0,Parent=tabBar})
 
-local TABS = {
-    { label="▶", name="Main"     },
-    { label="◈", name="Settings" },
-}
-local activeTab = 1
-local tabBtns   = {}
+local TABS={"Main","Gamemode","Settings"}
+local activeTab=1
+local tabPills={}
+local tabContents={}   -- will be filled below
 
-for i, t in ipairs(TABS) do
-    local yp = (i-1)*56 + 16
-    local tb = N("Frame",{
-        Size=UDim2.new(0,SW-2,0,48),Position=UDim2.new(0,1,0,yp),
-        BackgroundColor3=i==1 and C.sel or C.side,BorderSizePixel=0,Parent=sidebar,
+local tabW=math.floor((GW-16)/#TABS)
+local ti05=TweenInfo.new(0.15,Enum.EasingStyle.Quad)
+
+for i,name in ipairs(TABS) do
+    local pill=N("Frame",{
+        Size=UDim2.new(0,tabW-4,0,22),
+        Position=UDim2.new(0,8+(i-1)*tabW,0.5,-11),
+        BackgroundColor3=i==1 and C.tabAct or C.side,
+        BorderSizePixel=0,Parent=tabBar,
     })
-    CR(6,tb)
-    local strip = N("Frame",{
-        Size=UDim2.new(0,3,0,28),Position=UDim2.new(0,0,0.5,-14),
-        BackgroundColor3=i==1 and C.actS or C.side,BorderSizePixel=0,Parent=tb,
-    })
-    CR(2,strip)
-    local iconLbl = N("TextLabel",{
-        Size=UDim2.new(1,0,0,22),Position=UDim2.new(0,0,0,6),
-        BackgroundTransparency=1,Text=t.label,
-        TextColor3=i==1 and Color3.fromRGB(185,130,255) or C.sub,
-        TextSize=15,Font=Enum.Font.GothamBold,Parent=tb,
-    })
-    local nameLbl = N("TextLabel",{
-        Size=UDim2.new(1,0,0,13),Position=UDim2.new(0,0,1,-16),
-        BackgroundTransparency=1,Text=t.name,
-        TextColor3=i==1 and C.txt or C.sub,
-        TextSize=9,Font=Enum.Font.Gotham,Parent=tb,
-    })
-    tabBtns[i] = {frame=tb, strip=strip, icon=iconLbl, name=nameLbl}
-    local idx = i
-    N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=tb}
+    CR(999,pill)
+    if i==1 then ST(C.accHi,0.8,pill) end
+
+    N("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
+        Text=name,TextColor3=i==1 and C.txt or C.sub,
+        TextSize=10,Font=Enum.Font.GothamBold,Parent=pill})
+
+    tabPills[i]=pill
+    local idx=i
+    N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=pill}
     ).MouseButton1Click:Connect(function()
-        local prev = tabBtns[activeTab]
-        if prev then
-            prev.frame.BackgroundColor3 = C.side
-            prev.strip.BackgroundColor3 = C.side
-            prev.icon.TextColor3 = C.sub
-            prev.name.TextColor3 = C.sub
+        if activeTab==idx then return end
+        -- deactivate old
+        local oldP=tabPills[activeTab]
+        TweenSvc:Create(oldP,ti05,{BackgroundColor3=C.side}):Play()
+        for _,ch in ipairs(oldP:GetChildren()) do
+            if ch:IsA("TextLabel") then
+                TweenSvc:Create(ch,ti05,{TextColor3=C.sub}):Play()
+            end
         end
-        activeTab = idx
-        tb.BackgroundColor3    = C.sel
-        strip.BackgroundColor3 = C.actS
-        iconLbl.TextColor3     = Color3.fromRGB(185,130,255)
-        nameLbl.TextColor3     = C.txt
+        pcall(function() oldP:FindFirstChildOfClass("UIStroke"):Destroy() end)
+        if tabContents[activeTab] then tabContents[activeTab].Visible=false end
+        -- activate new
+        activeTab=idx
+        TweenSvc:Create(pill,ti05,{BackgroundColor3=C.tabAct}):Play()
+        for _,ch in ipairs(pill:GetChildren()) do
+            if ch:IsA("TextLabel") then
+                TweenSvc:Create(ch,ti05,{TextColor3=C.txt}):Play()
+            end
+        end
+        ST(C.accHi,0.8,pill)
+        if tabContents[idx] then tabContents[idx].Visible=true end
     end)
 end
 
 -- ════════════════════════════════════════════════════════
--- CONTENT ScrollingFrame
+-- CONTENT AREA  (one ScrollingFrame per tab)
 -- ════════════════════════════════════════════════════════
-local content = N("ScrollingFrame",{
-    Size=UDim2.new(0,CW,0,CONTENT_H),
-    Position=UDim2.new(0,SW,0,HDR_H),
-    BackgroundColor3=C.panel,BorderSizePixel=0,
-    ScrollBarThickness=3,ScrollBarImageColor3=C.acc,
-    CanvasSize=UDim2.new(0,0,0,0),
-    AutomaticCanvasSize=Enum.AutomaticSize.Y,
-    ScrollingDirection=Enum.ScrollingDirection.Y,
-    Parent=main,
-})
+local function makeScroll(visible)
+    return N("ScrollingFrame",{
+        Size=UDim2.new(1,0,0,CONT_H),
+        Position=UDim2.new(0,0,0,HDR_H+TBAR_H),
+        BackgroundColor3=C.panel,BorderSizePixel=0,
+        ScrollBarThickness=3,ScrollBarImageColor3=C.acc,
+        CanvasSize=UDim2.new(0,0,0,0),
+        AutomaticCanvasSize=Enum.AutomaticSize.Y,
+        ScrollingDirection=Enum.ScrollingDirection.Y,
+        Visible=visible,Parent=main,
+    })
+end
 
--- ─── forward declarations ───
-local doLayout, buildEnemyList
-local worldListOpen  = false
-local enemyListOpen  = false
-local worldItemFrames = {}
-local enemyCheckFrames = {}
+-- ─── card helper: rounded, inset from edges ───
+local function makeCard(parent, y, h)
+    local f=N("Frame",{
+        Size=UDim2.new(1,-(CARD_M*2),0,h),
+        Position=UDim2.new(0,CARD_M,0,y),
+        BackgroundColor3=C.card,BorderSizePixel=0,Parent=parent,
+    })
+    CR(CARD_R,f); ST(C.sep,0.8,f)
+    return f
+end
+
+-- forward decls
+local buildEnemyList, doMainLayout
+local worldListOpen=false; local enemyListOpen=false
+local worldItemFrames={}; local enemyCheckFrames={}
 
 -- ════════════════════════════════════════════════════════
--- WORLD ROW (dropdown trigger)  — sama persis gaya
+-- TAB 1: MAIN  (world farm)
 -- ════════════════════════════════════════════════════════
-local worldRow = N("Frame",{
-    Size=UDim2.new(1,0,0,ROW_H),Position=UDim2.new(0,0,0,0),
-    BackgroundColor3=C.panel,BorderSizePixel=0,Parent=content,
-})
-N("Frame",{Size=UDim2.new(1,-10,0,1),Position=UDim2.new(0,5,1,-1),
-    BackgroundColor3=C.sep,BorderSizePixel=0,Parent=worldRow})
-N("TextLabel",{
-    Size=UDim2.new(0,46,1,0),Position=UDim2.new(0,12,0,0),
+local scrollMain=makeScroll(true)
+tabContents[1]=scrollMain
+
+local PAD=4  -- vertical padding between cards
+
+-- World dropdown card
+local worldCard=makeCard(scrollMain,PAD,ROW_H)
+
+N("TextLabel",{Size=UDim2.new(0,52,1,0),Position=UDim2.new(0,12,0,0),
     BackgroundTransparency=1,Text="World",
     TextColor3=C.sub,TextSize=10,Font=Enum.Font.GothamBold,
-    TextXAlignment=Enum.TextXAlignment.Left,Parent=worldRow,
-})
-local worldVal = N("TextLabel",{
-    Size=UDim2.new(1,-70,1,0),Position=UDim2.new(0,58,0,0),
+    TextXAlignment=Enum.TextXAlignment.Left,Parent=worldCard})
+local worldVal=N("TextLabel",{Size=UDim2.new(1,-80,1,0),Position=UDim2.new(0,64,0,0),
     BackgroundTransparency=1,Text=WORLDS[1].name,
     TextColor3=C.txt,TextSize=10,Font=Enum.Font.Gotham,
-    TextXAlignment=Enum.TextXAlignment.Left,Parent=worldRow,
-})
-local worldArrow = N("TextLabel",{
-    Size=UDim2.new(0,16,1,0),Position=UDim2.new(1,-18,0,0),
+    TextXAlignment=Enum.TextXAlignment.Left,Parent=worldCard})
+local worldArrow=N("TextLabel",{Size=UDim2.new(0,16,1,0),Position=UDim2.new(1,-18,0,0),
     BackgroundTransparency=1,Text="►",
-    TextColor3=C.sub,TextSize=9,Font=Enum.Font.GothamBold,Parent=worldRow,
-})
-N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=worldRow}
+    TextColor3=C.sub,TextSize=9,Font=Enum.Font.GothamBold,Parent=worldCard})
+N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=worldCard}
 ).MouseButton1Click:Connect(function()
-    worldListOpen = not worldListOpen
-    worldArrow.Text = worldListOpen and "▾" or "►"
-    doLayout()
+    worldListOpen=not worldListOpen
+    worldArrow.Text=worldListOpen and "▾" or "►"
+    doMainLayout()
 end)
 
--- ─── World items frame (hidden until open) ───
-local worldItemsFrame = N("Frame",{
-    Size=UDim2.new(1,0,0,0),Position=UDim2.new(0,0,0,ROW_H),
-    BackgroundColor3=C.item,BorderSizePixel=0,Visible=false,Parent=content,
+-- World items (hidden, positioned by doMainLayout)
+local worldItemsCard=N("Frame",{
+    Size=UDim2.new(1,-(CARD_M*2),0,0),Position=UDim2.new(0,CARD_M,0,PAD+ROW_H+2),
+    BackgroundColor3=C.card,BorderSizePixel=0,Visible=false,Parent=scrollMain,
 })
-for i, w in ipairs(WORLDS) do
-    local item = N("Frame",{
-        Size=UDim2.new(1,0,0,ITEM_H),
-        Position=UDim2.new(0,0,0,(i-1)*ITEM_H),
-        BackgroundColor3=i==1 and C.sel or C.item,
-        BorderSizePixel=0,Parent=worldItemsFrame,
+CR(CARD_R,worldItemsCard); ST(C.sep,0.8,worldItemsCard)
+
+for i,w in ipairs(WORLDS) do
+    local item=N("Frame",{
+        Size=UDim2.new(1,0,0,ITEM_H),Position=UDim2.new(0,0,0,(i-1)*ITEM_H),
+        BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=1,
+        BorderSizePixel=0,Parent=worldItemsCard,
     })
-    local wStrip = N("Frame",{
-        Size=UDim2.new(0,2,0,14),Position=UDim2.new(0,6,0.5,-7),
-        BackgroundColor3=i==1 and C.actS or C.item,BorderSizePixel=0,Parent=item,
-    })
+    local wStrip=N("Frame",{Size=UDim2.new(0,2,0,14),Position=UDim2.new(0,8,0.5,-7),
+        BackgroundColor3=i==1 and C.actS or C.sep,BorderSizePixel=0,Parent=item})
     CR(1,wStrip)
-    local lbl = N("TextLabel",{
-        Size=UDim2.new(1,-18,1,0),Position=UDim2.new(0,16,0,0),
+    local lbl=N("TextLabel",{Size=UDim2.new(1,-22,1,0),Position=UDim2.new(0,18,0,0),
         BackgroundTransparency=1,Text=w.name,
         TextColor3=i==1 and C.txt or C.sub,
         TextSize=10,Font=Enum.Font.Gotham,
-        TextXAlignment=Enum.TextXAlignment.Left,Parent=item,
-    })
-    worldItemFrames[i] = {frame=item,label=lbl,strip=wStrip}
-    local idx = i
+        TextXAlignment=Enum.TextXAlignment.Left,Parent=item})
+    worldItemFrames[i]={frame=item,label=lbl,strip=wStrip}
+    local idx=i
     N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=item}
     ).MouseButton1Click:Connect(function()
-        local old = worldItemFrames[selectedWorld]
-        if old then
-            old.frame.BackgroundColor3 = C.item
-            old.label.TextColor3 = C.sub
-            old.strip.BackgroundColor3 = C.item
-        end
-        selectedWorld = idx
-        item.BackgroundColor3  = C.sel
-        lbl.TextColor3         = C.txt
-        wStrip.BackgroundColor3 = C.actS
-        worldVal.Text = w.name
-        worldListOpen = false; worldArrow.Text = "►"
-        resetEnemies(); buildEnemyList(); doLayout()
+        local old=worldItemFrames[selectedWorld]
+        if old then old.label.TextColor3=C.sub;old.strip.BackgroundColor3=C.sep end
+        selectedWorld=idx
+        lbl.TextColor3=C.txt; wStrip.BackgroundColor3=C.actS
+        worldVal.Text=w.name
+        worldListOpen=false; worldArrow.Text="►"
+        resetEnemies(); buildEnemyList(); doMainLayout()
     end)
 end
 
--- ════════════════════════════════════════════════════════
--- ENEMY ROW (dropdown trigger) — sama persis gaya World
--- ════════════════════════════════════════════════════════
-local enemyRow = N("Frame",{
-    Size=UDim2.new(1,0,0,ROW_H),Position=UDim2.new(0,0,0,ROW_H),
-    BackgroundColor3=C.panel,BorderSizePixel=0,Parent=content,
-})
-N("Frame",{Size=UDim2.new(1,-10,0,1),Position=UDim2.new(0,5,1,-1),
-    BackgroundColor3=C.sep,BorderSizePixel=0,Parent=enemyRow})
-N("TextLabel",{
-    Size=UDim2.new(0,52,1,0),Position=UDim2.new(0,12,0,0),
+-- Enemy dropdown card (positioned by doMainLayout)
+local enemyCardY = PAD+ROW_H+PAD+2
+local enemyCard=makeCard(scrollMain,enemyCardY,ROW_H)
+
+N("TextLabel",{Size=UDim2.new(0,56,1,0),Position=UDim2.new(0,12,0,0),
     BackgroundTransparency=1,Text="Enemy",
     TextColor3=C.sub,TextSize=10,Font=Enum.Font.GothamBold,
-    TextXAlignment=Enum.TextXAlignment.Left,Parent=enemyRow,
-})
-local enemyVal = N("TextLabel",{
-    Size=UDim2.new(1,-76,1,0),Position=UDim2.new(0,64,0,0),
+    TextXAlignment=Enum.TextXAlignment.Left,Parent=enemyCard})
+local enemyVal=N("TextLabel",{Size=UDim2.new(1,-82,1,0),Position=UDim2.new(0,68,0,0),
     BackgroundTransparency=1,Text="All",
     TextColor3=C.txt,TextSize=10,Font=Enum.Font.Gotham,
-    TextXAlignment=Enum.TextXAlignment.Left,Parent=enemyRow,
-})
-local enemyArrow = N("TextLabel",{
-    Size=UDim2.new(0,16,1,0),Position=UDim2.new(1,-18,0,0),
+    TextXAlignment=Enum.TextXAlignment.Left,Parent=enemyCard})
+local enemyArrow=N("TextLabel",{Size=UDim2.new(0,16,1,0),Position=UDim2.new(1,-18,0,0),
     BackgroundTransparency=1,Text="►",
-    TextColor3=C.sub,TextSize=9,Font=Enum.Font.GothamBold,Parent=enemyRow,
-})
-N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=enemyRow}
+    TextColor3=C.sub,TextSize=9,Font=Enum.Font.GothamBold,Parent=enemyCard})
+N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=enemyCard}
 ).MouseButton1Click:Connect(function()
-    enemyListOpen = not enemyListOpen
-    enemyArrow.Text = enemyListOpen and "▾" or "►"
-    doLayout()
+    enemyListOpen=not enemyListOpen
+    enemyArrow.Text=enemyListOpen and "▾" or "►"
+    doMainLayout()
 end)
 
--- ─── Enemy items frame (hidden until open, built by buildEnemyList) ───
-local enemyItemsFrame = N("Frame",{
-    Size=UDim2.new(1,0,0,0),Position=UDim2.new(0,0,0,ROW_H*2),
-    BackgroundColor3=C.item,BorderSizePixel=0,Visible=false,Parent=content,
+local enemyItemsCard=N("Frame",{
+    Size=UDim2.new(1,-(CARD_M*2),0,0),Position=UDim2.new(0,CARD_M,0,0),
+    BackgroundColor3=C.card,BorderSizePixel=0,Visible=false,Parent=scrollMain,
 })
+CR(CARD_R,enemyItemsCard); ST(C.sep,0.8,enemyItemsCard)
+
+-- layout engine for main tab
+doMainLayout=function()
+    local y=PAD
+    -- world card stays at y
+    worldCard.Position=UDim2.new(0,CARD_M,0,y); y=y+ROW_H+2
+
+    if worldListOpen then
+        local h=#WORLDS*ITEM_H
+        worldItemsCard.Visible=true
+        worldItemsCard.Size=UDim2.new(1,-(CARD_M*2),0,h)
+        worldItemsCard.Position=UDim2.new(0,CARD_M,0,y)
+        y=y+h+PAD
+    else
+        worldItemsCard.Visible=false
+        y=y+PAD
+    end
+
+    enemyCard.Position=UDim2.new(0,CARD_M,0,y); y=y+ROW_H+2
+
+    if enemyListOpen then
+        enemyItemsCard.Visible=true
+        enemyItemsCard.Position=UDim2.new(0,CARD_M,0,y)
+        y=y+enemyItemsCard.Size.Y.Offset+PAD
+    else
+        enemyItemsCard.Visible=false
+    end
+end
+
+buildEnemyList=function()
+    for _,c in ipairs(enemyItemsCard:GetChildren()) do c:Destroy() end
+    enemyCheckFrames={}
+    local w=WORLDS[selectedWorld]; local enemies=w and w.enemies or {}
+    local enabled=0
+    for i=1,#enemies do if enabledEnemies[i] then enabled=enabled+1 end end
+    if #enemies==0 then enemyVal.Text="—"
+    elseif enabled==#enemies then enemyVal.Text="All ("..#enemies..")"
+    else enemyVal.Text=enabled.."/"..#enemies end
+
+    if #enemies==0 then
+        local ph=N("Frame",{Size=UDim2.new(1,0,0,ITEM_H),Position=UDim2.new(0,0,0,0),
+            BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=1,
+            BorderSizePixel=0,Parent=enemyItemsCard})
+        N("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
+            Text="No enemies",TextColor3=C.sub,TextSize=9,Font=Enum.Font.Gotham,Parent=ph})
+        enemyItemsCard.Size=UDim2.new(1,-(CARD_M*2),0,ITEM_H)
+        return
+    end
+
+    for i,e in ipairs(enemies) do
+        local item=N("Frame",{
+            Size=UDim2.new(1,0,0,ITEM_H),Position=UDim2.new(0,0,0,(i-1)*ITEM_H),
+            BackgroundColor3=Color3.new(0,0,0),BackgroundTransparency=1,
+            BorderSizePixel=0,Parent=enemyItemsCard})
+        local rc=RARITY_COLOR[e.rarity or 1]
+        local rs=N("Frame",{Size=UDim2.new(0,2,0,14),Position=UDim2.new(0,8,0.5,-7),
+            BackgroundColor3=rc,BorderSizePixel=0,Parent=item})
+        CR(1,rs)
+        local chk=N("Frame",{Size=UDim2.new(0,13,0,13),Position=UDim2.new(0,18,0.5,-6),
+            BackgroundColor3=enabledEnemies[i] and C.acc or C.item,
+            BorderSizePixel=0,Parent=item})
+        CR(3,chk)
+        N("TextLabel",{Size=UDim2.new(1,-38,1,0),Position=UDim2.new(0,36,0,0),
+            BackgroundTransparency=1,Text=e.name,
+            TextColor3=C.txt,TextSize=10,Font=Enum.Font.Gotham,
+            TextXAlignment=Enum.TextXAlignment.Left,Parent=item})
+        enemyCheckFrames[i]=chk
+        local idx=i
+        N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=item}
+        ).MouseButton1Click:Connect(function()
+            enabledEnemies[idx]=not enabledEnemies[idx]
+            TweenSvc:Create(chk,TweenInfo.new(0.1),{
+                BackgroundColor3=enabledEnemies[idx] and C.acc or C.item
+            }):Play()
+            local en2=0
+            for j=1,#enemies do if enabledEnemies[j] then en2=en2+1 end end
+            if en2==#enemies then enemyVal.Text="All ("..#enemies..")"
+            else enemyVal.Text=en2.."/"..#enemies end
+        end)
+    end
+    enemyItemsCard.Size=UDim2.new(1,-(CARD_M*2),0,#enemies*ITEM_H)
+end
+
+buildEnemyList(); doMainLayout()
+
+-- ════════════════════════════════════════════════════════
+-- TAB 2: GAMEMODE
+-- ════════════════════════════════════════════════════════
+local scrollGM=makeScroll(false)
+tabContents[2]=scrollGM
+
+-- helper: make a feature row card (lonjong ke samping)
+-- returns the card frame
+local function makeFeatureCard(parent, yOff, labelText)
+    local card=makeCard(parent,yOff,ROW_H)
+    N("TextLabel",{
+        Size=UDim2.new(0,160,1,0),Position=UDim2.new(0,12,0,0),
+        BackgroundTransparency=1,Text=labelText,
+        TextColor3=C.txt,TextSize=10,Font=Enum.Font.GothamBold,
+        TextXAlignment=Enum.TextXAlignment.Left,Parent=card,
+    })
+    return card
+end
+
+-- number input box helper
+local function makeNumInput(parent, xRight, defaultVal, minV, maxV, onChange)
+    local box=N("Frame",{
+        Size=UDim2.new(0,44,0,22),Position=UDim2.new(1,xRight,0.5,-11),
+        BackgroundColor3=C.input,BorderSizePixel=0,Parent=parent,
+    })
+    CR(6,box); ST(C.sep,0.8,box)
+    local tb=N("TextBox",{
+        Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
+        Text=tostring(defaultVal),
+        TextColor3=C.txt,TextSize=10,Font=Enum.Font.GothamBold,
+        ClearTextOnFocus=false,Parent=box,
+    })
+    tb.FocusLost:Connect(function()
+        local v=tonumber(tb.Text)
+        if not v then v=defaultVal end
+        v=math.clamp(math.floor(v),minV,maxV)
+        tb.Text=tostring(v)
+        onChange(v)
+    end)
+    return box,tb
+end
+
+-- ── section label ──
+local function secLabel(parent,y,txt)
+    N("TextLabel",{
+        Size=UDim2.new(1,-(CARD_M*2),0,16),Position=UDim2.new(0,CARD_M,0,y),
+        BackgroundTransparency=1,Text=txt,
+        TextColor3=C.sub,TextSize=8,Font=Enum.Font.GothamBold,
+        TextXAlignment=Enum.TextXAlignment.Left,Parent=parent,
+    })
+end
+
+local gmy=PAD
+
+-- ── DUNGEON EASY section ──────────────────────────────
+secLabel(scrollGM,gmy,"DUNGEON EASY"); gmy=gmy+18
+
+-- Auto Dungeon toggle card
+local dungCard=makeFeatureCard(scrollGM,gmy,"Auto Dungeon Easy")
+local dungPill,dungKnob=makePill(dungCard,-48)
+local dungState=false
+local dti=TweenInfo.new(0.14,Enum.EasingStyle.Quad)
+N("TextButton",{Size=UDim2.new(0,96,1,0),Position=UDim2.new(1,-100,0,0),
+    BackgroundTransparency=1,Text="",Parent=dungCard}
+).MouseButton1Click:Connect(function()
+    dungState=not dungState; dungeonActive=dungState
+    TweenSvc:Create(dungPill,dti,{BackgroundColor3=dungState and C.tOn or C.tOff}):Play()
+    TweenSvc:Create(dungKnob,dti,{
+        Position=dungState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
+        BackgroundColor3=dungState and C.kOn or C.kOff,
+    }):Play()
+    if dungState then task.spawn(dungeonLoop) end
+end)
+gmy=gmy+ROW_H+PAD
+
+-- Leave at Room card
+local leaveRoomCard=makeCard(scrollGM,gmy,ROW_H)
+N("TextLabel",{Size=UDim2.new(1,-60,1,0),Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1,Text="Auto leave at room",
+    TextColor3=C.sub,TextSize=9,Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left,Parent=leaveRoomCard})
+makeNumInput(leaveRoomCard,-50,dungeonLeaveRoom,1,50,function(v)
+    dungeonLeaveRoom=v
+end)
+gmy=gmy+ROW_H+PAD+4
+
+-- ── TRIAL EASY section ───────────────────────────────
+secLabel(scrollGM,gmy,"TRIAL EASY"); gmy=gmy+18
+
+-- Auto Trial toggle card
+local trialCard=makeFeatureCard(scrollGM,gmy,"Auto Trial Easy")
+local trialPill,trialKnob=makePill(trialCard,-48)
+local trialState=false
+N("TextButton",{Size=UDim2.new(0,96,1,0),Position=UDim2.new(1,-100,0,0),
+    BackgroundTransparency=1,Text="",Parent=trialCard}
+).MouseButton1Click:Connect(function()
+    trialState=not trialState; trialActive=trialState
+    TweenSvc:Create(trialPill,dti,{BackgroundColor3=trialState and C.tOn or C.tOff}):Play()
+    TweenSvc:Create(trialKnob,dti,{
+        Position=trialState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
+        BackgroundColor3=trialState and C.kOn or C.kOff,
+    }):Play()
+    if trialState then task.spawn(trialLoop) end
+end)
+gmy=gmy+ROW_H+PAD
+
+-- Leave at Wave card
+local leaveWaveCard=makeCard(scrollGM,gmy,ROW_H)
+N("TextLabel",{Size=UDim2.new(1,-60,1,0),Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1,Text="Auto leave at wave",
+    TextColor3=C.sub,TextSize=9,Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left,Parent=leaveWaveCard})
+makeNumInput(leaveWaveCard,-50,trialLeaveWave,1,50,function(v)
+    trialLeaveWave=v
+end)
+
+-- ════════════════════════════════════════════════════════
+-- TAB 3: SETTINGS  (placeholder)
+-- ════════════════════════════════════════════════════════
+local scrollSet=makeScroll(false)
+tabContents[3]=scrollSet
+local sc=makeCard(scrollSet,PAD,ROW_H)
+N("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
+    Text="Settings (coming soon)",TextColor3=C.sub,
+    TextSize=10,Font=Enum.Font.Gotham,Parent=sc})
 
 -- ════════════════════════════════════════════════════════
 -- BOTTOM BAR
 -- ════════════════════════════════════════════════════════
-local botBar = N("Frame",{
+local botBar=N("Frame",{
     Size=UDim2.new(1,0,0,BOT_H),
-    Position=UDim2.new(0,0,0,HDR_H+CONTENT_H),
+    Position=UDim2.new(0,0,0,HDR_H+TBAR_H+CONT_H),
     BackgroundColor3=C.bot,BorderSizePixel=0,Parent=main,
 })
 N("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,0,0),
     BackgroundColor3=C.sep,BorderSizePixel=0,Parent=botBar})
 
-local avatarBg = N("Frame",{
-    Size=UDim2.new(0,32,0,32),Position=UDim2.new(0,10,0.5,-16),
-    BackgroundColor3=C.acc,BackgroundTransparency=0.5,
-    BorderSizePixel=0,Parent=botBar,
-})
+local avatarBg=N("Frame",{Size=UDim2.new(0,32,0,32),Position=UDim2.new(0,10,0.5,-16),
+    BackgroundColor3=C.acc,BackgroundTransparency=0.5,BorderSizePixel=0,Parent=botBar})
 CR(999,avatarBg); ST(C.accHi,1,avatarBg)
-local avatarImg = N("ImageLabel",{
-    Size=UDim2.new(1,-4,1,-4),Position=UDim2.new(0,2,0,2),
-    BackgroundTransparency=1,Image="",Parent=avatarBg,
-})
+local avatarImg=N("ImageLabel",{Size=UDim2.new(1,-4,1,-4),Position=UDim2.new(0,2,0,2),
+    BackgroundTransparency=1,Image="",Parent=avatarBg})
 CR(999,avatarImg)
 task.spawn(function()
-    local ok, url = pcall(function()
-        return Players:GetUserThumbnailAsync(
-            lp.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+    local ok,url=pcall(function()
+        return Players:GetUserThumbnailAsync(lp.UserId,
+            Enum.ThumbnailType.HeadShot,Enum.ThumbnailSize.Size48x48)
     end)
-    if ok and url then avatarImg.Image = url end
+    if ok and url then avatarImg.Image=url end
 end)
 
-N("TextLabel",{
-    Size=UDim2.new(0,120,1,0),Position=UDim2.new(0,48,0,0),
-    BackgroundTransparency=1, Text=lp.DisplayName,
+N("TextLabel",{Size=UDim2.new(0,120,1,0),Position=UDim2.new(0,48,0,0),
+    BackgroundTransparency=1,Text=lp.DisplayName,
     TextColor3=C.txt,TextSize=10,Font=Enum.Font.GothamBold,
-    TextXAlignment=Enum.TextXAlignment.Left,Parent=botBar,
-})
+    TextXAlignment=Enum.TextXAlignment.Left,Parent=botBar})
 
-N("Frame",{
-    Size=UDim2.new(0,1,0,26),Position=UDim2.new(1,-94,0.5,-13),
-    BackgroundColor3=C.sep,BorderSizePixel=0,Parent=botBar,
-})
-N("TextLabel",{
-    Size=UDim2.new(0,52,1,0),Position=UDim2.new(1,-92,0,0),
-    BackgroundTransparency=1,Text="Auto\nFarm",
-    TextColor3=C.sub,TextSize=8,Font=Enum.Font.GothamBold,
+N("Frame",{Size=UDim2.new(0,1,0,26),Position=UDim2.new(1,-94,0.5,-13),
+    BackgroundColor3=C.sep,BorderSizePixel=0,Parent=botBar})
+N("TextLabel",{Size=UDim2.new(0,52,1,0),Position=UDim2.new(1,-92,0,0),
+    BackgroundTransparency=1,Text="Auto\nFarm",TextColor3=C.sub,
+    TextSize=8,Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Right,
-    TextYAlignment=Enum.TextYAlignment.Center,Parent=botBar,
-})
+    TextYAlignment=Enum.TextYAlignment.Center,Parent=botBar})
 
-local pill = N("Frame",{
-    Size=UDim2.new(0,40,0,20),Position=UDim2.new(1,-48,0.5,-10),
-    BackgroundColor3=C.tOff,BorderSizePixel=0,Parent=botBar,
-})
+local pill=N("Frame",{Size=UDim2.new(0,40,0,20),Position=UDim2.new(1,-48,0.5,-10),
+    BackgroundColor3=C.tOff,BorderSizePixel=0,Parent=botBar})
 CR(999,pill)
-local knob = N("Frame",{
-    Size=UDim2.new(0,16,0,16),Position=UDim2.new(0,2,0.5,-8),
-    BackgroundColor3=C.kOff,BorderSizePixel=0,Parent=pill,
-})
+local knob=N("Frame",{Size=UDim2.new(0,16,0,16),Position=UDim2.new(0,2,0.5,-8),
+    BackgroundColor3=C.kOff,BorderSizePixel=0,Parent=pill})
 CR(999,knob)
 
-local farmState = false
-local ti = TweenInfo.new(0.14, Enum.EasingStyle.Quad)
-N("TextButton",{
-    Size=UDim2.new(0,96,1,0),Position=UDim2.new(1,-98,0,0),
-    BackgroundTransparency=1,Text="",Parent=botBar,
-}).MouseButton1Click:Connect(function()
-    farmState = not farmState; farmActive = farmState
-    TweenSvc:Create(pill, ti,{BackgroundColor3=farmState and C.tOn or C.tOff}):Play()
-    TweenSvc:Create(knob, ti,{
+local farmState=false
+local ti=TweenInfo.new(0.14,Enum.EasingStyle.Quad)
+N("TextButton",{Size=UDim2.new(0,96,1,0),Position=UDim2.new(1,-98,0,0),
+    BackgroundTransparency=1,Text="",Parent=botBar}
+).MouseButton1Click:Connect(function()
+    farmState=not farmState; farmActive=farmState
+    TweenSvc:Create(pill,ti,{BackgroundColor3=farmState and C.tOn or C.tOff}):Play()
+    TweenSvc:Create(knob,ti,{
         Position=farmState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
         BackgroundColor3=farmState and C.kOn or C.kOff,
     }):Play()
@@ -572,26 +849,20 @@ end)
 -- ════════════════════════════════════════════════════════
 -- MINIMIZE DOT
 -- ════════════════════════════════════════════════════════
-local dot = N("Frame",{
-    Size=UDim2.new(0,36,0,36),Position=UDim2.new(0,10,0.5,-18),
-    BackgroundColor3=C.side,BorderSizePixel=0,
-    Active=true,Visible=false,Parent=gui,
-})
+local dot=N("Frame",{Size=UDim2.new(0,36,0,36),Position=UDim2.new(0,10,0.5,-18),
+    BackgroundColor3=C.side,BorderSizePixel=0,Active=true,Visible=false,Parent=gui})
 CR(8,dot); ST(C.acc,1.2,dot)
 N("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
     Text="✦",TextColor3=Color3.fromRGB(140,80,255),
     TextSize=16,Font=Enum.Font.GothamBold,Parent=dot})
 
-closeBtn.MouseButton1Click:Connect(function()
-    main.Visible=false; dot.Visible=true
-end)
+closeBtn.MouseButton1Click:Connect(function() main.Visible=false;dot.Visible=true end)
 
-local dotDrag,dotS,dotO,dotMov,dotLi = false,nil,nil,false,nil
+local dotDrag,dotS,dotO,dotMov,dotLi=false,nil,nil,false,nil
 dot.InputBegan:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.MouseButton1
     or i.UserInputType==Enum.UserInputType.Touch then
-        dotDrag=true; dotS=i.Position; dotO=dot.Position; dotMov=false
-    end
+        dotDrag=true;dotS=i.Position;dotO=dot.Position;dotMov=false end
 end)
 dot.InputChanged:Connect(function(i)
     if i.UserInputType==Enum.UserInputType.MouseMovement
@@ -608,124 +879,6 @@ UIS.InputEnded:Connect(function(i)
     if dotDrag and (i.UserInputType==Enum.UserInputType.MouseButton1
     or i.UserInputType==Enum.UserInputType.Touch) then
         dotDrag=false
-        if not dotMov then main.Visible=true; dot.Visible=false end
+        if not dotMov then main.Visible=true;dot.Visible=false end
     end
 end)
-
--- ════════════════════════════════════════════════════════
--- LAYOUT ENGINE  (outer frame fixed, inner content scrolls)
--- ════════════════════════════════════════════════════════
-doLayout = function()
-    local y = ROW_H   -- below worldRow
-
-    -- world dropdown items
-    if worldListOpen then
-        local h = #WORLDS * ITEM_H
-        worldItemsFrame.Visible  = true
-        worldItemsFrame.Size     = UDim2.new(1,0,0,h)
-        worldItemsFrame.Position = UDim2.new(0,0,0,y)
-        y = y + h
-    else
-        worldItemsFrame.Visible = false
-    end
-
-    -- enemy row
-    enemyRow.Position = UDim2.new(0,0,0,y)
-    y = y + ROW_H
-
-    -- enemy dropdown items
-    if enemyListOpen then
-        enemyItemsFrame.Visible  = true
-        enemyItemsFrame.Position = UDim2.new(0,0,0,y)
-        -- size set by buildEnemyList
-        y = y + enemyItemsFrame.Size.Y.Offset
-    else
-        enemyItemsFrame.Visible = false
-    end
-end
-
--- ════════════════════════════════════════════════════════
--- ENEMY LIST BUILDER  — flat list with checkbox + rarity dot
--- (same visual style as world items)
--- ════════════════════════════════════════════════════════
-buildEnemyList = function()
-    for _, c in ipairs(enemyItemsFrame:GetChildren()) do c:Destroy() end
-    enemyCheckFrames = {}
-
-    local w = WORLDS[selectedWorld]
-    local enemies = w and w.enemies or {}
-
-    -- update label on enemy row
-    local enabled = 0
-    for i = 1, #enemies do if enabledEnemies[i] then enabled = enabled + 1 end end
-    if #enemies == 0 then
-        enemyVal.Text = "—"
-    elseif enabled == #enemies then
-        enemyVal.Text = "All (" .. #enemies .. ")"
-    else
-        enemyVal.Text = enabled .. "/" .. #enemies
-    end
-
-    if #enemies == 0 then
-        -- empty placeholder
-        local ph = N("Frame",{
-            Size=UDim2.new(1,0,0,ITEM_H),Position=UDim2.new(0,0,0,0),
-            BackgroundColor3=C.item,BorderSizePixel=0,Parent=enemyItemsFrame,
-        })
-        N("TextLabel",{
-            Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
-            Text="No enemies in data",TextColor3=C.sub,TextSize=9,
-            Font=Enum.Font.Gotham,Parent=ph,
-        })
-        enemyItemsFrame.Size = UDim2.new(1,0,0,ITEM_H)
-        return
-    end
-
-    for i, e in ipairs(enemies) do
-        local item = N("Frame",{
-            Size=UDim2.new(1,0,0,ITEM_H),
-            Position=UDim2.new(0,0,0,(i-1)*ITEM_H),
-            BackgroundColor3=C.item,BorderSizePixel=0,Parent=enemyItemsFrame,
-        })
-        -- rarity color dot (left strip, same as world strip)
-        local rc = RARITY_COLOR[e.rarity or 1]
-        local rStrip = N("Frame",{
-            Size=UDim2.new(0,2,0,14),Position=UDim2.new(0,6,0.5,-7),
-            BackgroundColor3=rc,BorderSizePixel=0,Parent=item,
-        })
-        CR(1,rStrip)
-        -- checkbox
-        local chk = N("Frame",{
-            Size=UDim2.new(0,13,0,13),Position=UDim2.new(0,16,0.5,-6),
-            BackgroundColor3=enabledEnemies[i] and C.acc or C.side,
-            BorderSizePixel=0,Parent=item,
-        })
-        CR(3,chk)
-        -- enemy name
-        N("TextLabel",{
-            Size=UDim2.new(1,-36,1,0),Position=UDim2.new(0,34,0,0),
-            BackgroundTransparency=1,Text=e.name,
-            TextColor3=C.txt,TextSize=10,Font=Enum.Font.Gotham,
-            TextXAlignment=Enum.TextXAlignment.Left,Parent=item,
-        })
-        enemyCheckFrames[i] = chk
-        local idx = i
-        N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=item}
-        ).MouseButton1Click:Connect(function()
-            enabledEnemies[idx] = not enabledEnemies[idx]
-            TweenSvc:Create(chk, TweenInfo.new(0.1),{
-                BackgroundColor3=enabledEnemies[idx] and C.acc or C.side,
-            }):Play()
-            -- update counter label
-            local en2 = 0
-            for j = 1, #enemies do if enabledEnemies[j] then en2=en2+1 end end
-            if en2 == #enemies then enemyVal.Text="All ("..#enemies..")"
-            else enemyVal.Text=en2.."/"..#enemies end
-        end)
-    end
-
-    enemyItemsFrame.Size = UDim2.new(1,0,0,#enemies*ITEM_H)
-end
-
-buildEnemyList()
-doLayout()
