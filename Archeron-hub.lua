@@ -206,9 +206,25 @@ local function joinGamemode(name)
     })
 end
 
+local function getTrialWave()
+    local ok, v = pcall(function()
+        return workspace.Client.Maps["Trial Easy"]
+            .GamemodeSessions.Global.StateManager.CurrentWave.Value
+    end)
+    return ok and tonumber(v) or 0
+end
+
+local function getDungeonRoom()
+    local ok, v = pcall(function()
+        return workspace.Client.Maps["Dungeon Easy"]
+            .GamemodeSessions.Global.StateManager.CurrentRoom.Value
+    end)
+    return ok and tonumber(v) or 0
+end
+
 local function dungeonLoop()
     joinGamemode("Dungeon Easy"); task.wait(4)
-    local room = 0
+    local lastRoom = getDungeonRoom()
     while dungeonActive do
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
@@ -221,20 +237,27 @@ local function dungeonLoop()
             task.wait(0.05); waitDead(t, 15); tries = tries - 1
         end
         if not dungeonActive then break end
-        if room >= dungeonLeaveRoom then dungeonActive = false; break end
+        local curRoom = getDungeonRoom()
+        if curRoom >= dungeonLeaveRoom then dungeonActive = false; break end
         task.wait(0.4)
         local door = findNearestDoor()
         if door then
             clearMovers(); hrp.CFrame = CFrame.new(door.Position)
-            task.wait(0.3); triggerDoor(door); task.wait(2.5)
-            room = room + 1
+            task.wait(0.3); triggerDoor(door)
+            -- wait for CurrentRoom to increment instead of fixed delay
+            local wc = 0
+            while dungeonActive and wc < 20 do
+                local r = getDungeonRoom()
+                if r ~= lastRoom then lastRoom = r; break end
+                task.wait(0.5); wc = wc + 1
+            end
         else task.wait(1) end
     end
 end
 
 local function trialLoop()
     joinGamemode("Trial Easy"); task.wait(4)
-    local wave = 0
+    local lastWave = getTrialWave()
     while trialActive do
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
@@ -247,10 +270,13 @@ local function trialLoop()
             task.wait(0.05); waitDead(t, 15); tries = tries - 1
         end
         if not trialActive then break end
-        if wave >= trialLeaveWave then trialActive = false; break end
+        local curWave = getTrialWave()
+        if curWave >= trialLeaveWave then trialActive = false; break end
+        -- wait for CurrentWave to increment
         local waitCycles = 0
         while trialActive and waitCycles < 60 do
-            if #findEnemiesInArea("Trial Easy") > 0 then wave = wave + 1; break end
+            local w = getTrialWave()
+            if w ~= lastWave then lastWave = w; break end
             task.wait(0.5); waitCycles = waitCycles + 1
         end
     end
