@@ -187,7 +187,7 @@ local function findNearestDoor()
     local hrpPos = (hrp and hrp.Position) or Vector3.new()
     local best, bestD, bestPP = nil, math.huge, nil
     local ok, mapFolder = pcall(function()
-        return workspace.Client.Maps["Dungeon Easy"].Map
+        return workspace.Client.Maps["Dungeon Easy"]
     end)
     if not ok or not mapFolder then return nil, nil end
     for _,v in ipairs(mapFolder:GetDescendants()) do
@@ -307,7 +307,7 @@ local function findNearestCullingDoor()
     local hrpPos = (hrp and hrp.Position) or Vector3.new()
     local best, bestD, bestPP = nil, math.huge, nil
     local ok, mapFolder = pcall(function()
-        return workspace.Client.Maps["Culling Game"].Map
+        return workspace.Client.Maps["Culling Game"]
     end)
     if not ok or not mapFolder then return nil, nil end
     for _,v in ipairs(mapFolder:GetDescendants()) do
