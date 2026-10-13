@@ -50,7 +50,6 @@ local WORLDS = {
         { name = "Chaos Arthur",rarity = 6 },
     }},
 }
-
 local RARITY_COLOR = {
     Color3.fromRGB( 80,200, 80),
     Color3.fromRGB( 80,140,255),
@@ -58,10 +57,6 @@ local RARITY_COLOR = {
     Color3.fromRGB(220, 50, 50),
     Color3.fromRGB(200, 60,255),
     Color3.fromRGB(255,210,  0),
-}
-
-local WORLD_BOSSES = {
-    { world = "Sins Kingdom",    boss = "Demon Melyode"   },
 }
 
 -- ════════════════════════════════════════════════════════
@@ -150,48 +145,15 @@ local function farmLoop()
     end
 end
 
-local bossActive   = false
-local selectedBoss = 1
-
-local function findBossPart(worldName, bossName)
-    local ok, folder = pcall(function()
-        return workspace.Server.Enemies[worldName][bossName]
-    end)
-    if not ok or not folder then return nil end
-    for _, v in ipairs(folder:GetDescendants()) do
-        if v:IsA("BasePart") and not v:GetAttribute("Died")
-        and v:GetAttribute("EnemyName") then return v end
-    end
-    return nil
-end
-
-local function bossLoop()
-    local lastTp = nil
-    while bossActive do
-        char = lp.Character; if not char then task.wait(1); continue end
-        hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
-        local b    = WORLD_BOSSES[selectedBoss]
-        local part = b and findBossPart(b.world, b.boss)
-        if part then
-            lastTp = nil
-            clearMovers(); hrp.CFrame = CFrame.new(part.Position)
-            task.wait(0.05); waitDead(part, 60)
-        else
-            if b and lastTp ~= b.world then
-                tpWorld(b.world); lastTp = b.world; task.wait(4)
-            else
-                task.wait(3)
-            end
-        end
-        task.wait(0.05)
-    end
-end
-
 -- ── DUNGEON / TRIAL ─────────────────────────────────────
 local dungeonActive    = false
 local trialActive      = false
+local cullingActive    = false
 local dungeonLeaveRoom = 10
 local trialLeaveWave   = 10
+local cullingLeaveRoom = 10
+local cullingDifficulty = "Easy"
+local CULLING_DIFFS = {"Easy","Medium","Hard"}
 
 local function findEnemiesInArea(folderName)
     local list = {}
@@ -211,15 +173,16 @@ end
 local function findNearestDoor()
     local hrpPos = (hrp and hrp.Position) or Vector3.new()
     local best, bestD = nil, math.huge
-    for _,v in ipairs(workspace:GetDescendants()) do
-        if v.Name == "Main" and v:IsA("BasePart") then
-            local p = v.Parent
-            if p and p:IsA("Model") and p.Name == "Door" then
-                local gp = p.Parent
-                if gp and gp.Name == "Doors" then
-                    local d = (v.Position - hrpPos).Magnitude
-                    if d < bestD then bestD = d; best = v end
-                end
+    local ok, mapFolder = pcall(function()
+        return workspace.Client.Maps["Dungeon Easy"].Map
+    end)
+    if not ok or not mapFolder then return nil end
+    for _,v in ipairs(mapFolder:GetDescendants()) do
+        if v:IsA("Model") and v.Name == "Door" then
+            local mainPart = v:FindFirstChild("Main")
+            if mainPart and mainPart:IsA("BasePart") then
+                local d = (mainPart.Position - hrpPos).Magnitude
+                if d < bestD then bestD = d; best = mainPart end
             end
         end
     end
@@ -285,10 +248,9 @@ local function dungeonLoop()
             task.wait(0.05); waitDead(t, 15); tries = tries - 1
         end
         if not dungeonActive then break end
+        task.wait(1.5)
         local curRoom = getDungeonRoom()
-        if curRoom >= dungeonLeaveRoom then
-    dungeonActive = false; leaveGamemode(); break end
-    
+        if curRoom >= dungeonLeaveRoom then dungeonActive = false; leaveGamemode(); break end
         task.wait(0.4)
         local door = findNearestDoor()
         if door then
@@ -298,6 +260,78 @@ local function dungeonLoop()
             local wc = 0
             while dungeonActive and wc < 20 do
                 local r = getDungeonRoom()
+                if r ~= lastRoom then lastRoom = r; break end
+                task.wait(0.5); wc = wc + 1
+            end
+        else task.wait(1) end
+    end
+end
+
+local function joinCullingGame()
+    local ok, pp = pcall(function()
+        return workspace.Server.ProximityPrompts["Cursed Academy"]["Culling Game"]
+    end)
+    if ok and pp and fireproximityprompt then
+        pcall(fireproximityprompt, pp)
+        task.wait(1.5)
+    end
+    fireBridgeNet({
+        {"General","Parties","SetDifficulty",cullingDifficulty,n=4},"\x02"
+    })
+end
+
+local function getCullingRoom()
+    local ok, v = pcall(function()
+        return workspace.Client.Maps["Culling Game"]
+            .GamemodeSessions.Global.StateManager.CurrentRoom.Value
+    end)
+    return ok and tonumber(v) or 0
+end
+
+local function findNearestCullingDoor()
+    local hrpPos = (hrp and hrp.Position) or Vector3.new()
+    local best, bestD = nil, math.huge
+    local ok, mapFolder = pcall(function()
+        return workspace.Client.Maps["Culling Game"].Map
+    end)
+    if not ok or not mapFolder then return nil end
+    for _,v in ipairs(mapFolder:GetDescendants()) do
+        if v:IsA("Model") and v.Name == "Door" then
+            local mainPart = v:FindFirstChild("Main")
+            if mainPart and mainPart:IsA("BasePart") then
+                local d = (mainPart.Position - hrpPos).Magnitude
+                if d < bestD then bestD = d; best = mainPart end
+            end
+        end
+    end
+    return best
+end
+
+local function cullingLoop()
+    joinCullingGame(); task.wait(4)
+    local lastRoom = getCullingRoom()
+    while cullingActive do
+        char = lp.Character; if not char then task.wait(1); continue end
+        hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
+        local tries = 40
+        while cullingActive and tries > 0 do
+            local en = findEnemiesInArea("Culling Game")
+            if #en == 0 then break end
+            local t = en[math.random(#en)]
+            clearMovers(); hrp.CFrame = CFrame.new(t.Position)
+            task.wait(0.05); waitDead(t, 15); tries = tries - 1
+        end
+        if not cullingActive then break end
+        task.wait(1.5)
+        local curRoom = getCullingRoom()
+        if curRoom >= cullingLeaveRoom then cullingActive = false; leaveGamemode(); break end
+        local door = findNearestCullingDoor()
+        if door then
+            clearMovers(); hrp.CFrame = CFrame.new(door.Position)
+            task.wait(0.3); triggerDoor(door)
+            local wc = 0
+            while cullingActive and wc < 20 do
+                local r = getCullingRoom()
                 if r ~= lastRoom then lastRoom = r; break end
                 task.wait(0.5); wc = wc + 1
             end
@@ -321,9 +355,8 @@ local function trialLoop()
         end
         if not trialActive then break end
         local curWave = getTrialWave()
-        if curWave >= trialLeaveWave then
-    trialActive = false; leaveGamemode(); break end
-        
+        if curWave >= trialLeaveWave then trialActive = false; leaveGamemode(); break end
+        -- wait for CurrentWave to increment
         local waitCycles = 0
         while trialActive and waitCycles < 60 do
             local w = getTrialWave()
@@ -855,88 +888,60 @@ N("TextLabel",{Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,12,0,0),
 makeNumInput(leaveWaveCard, -50, trialLeaveWave, 1, 51, function(v)
     trialLeaveWave = v
 end)
-
--- ── WORLD BOSS ───────────────────────────────────────
 gmy = gmy + ROW_H + PAD + 4
-secLabel(scrollGM, gmy, "WORLD BOSS"); gmy = gmy + 18
 
-local bossDropCard = makeCard(scrollGM, gmy, ROW_H)
-N("TextLabel",{Size=UDim2.new(0,52,1,0), Position=UDim2.new(0,12,0,0),
-    BackgroundTransparency=1, Text="Boss",
-    TextColor3=C.sub, TextSize=10, Font=Enum.Font.GothamBold,
-    TextXAlignment=Enum.TextXAlignment.Left, Parent=bossDropCard})
-local bossVal = N("TextLabel",{Size=UDim2.new(1,-80,1,0), Position=UDim2.new(0,64,0,0),
-    Text=WORLD_BOSSES[1].boss.." - "..WORLD_BOSSES[1].world,
-    BackgroundTransparency=1,
-    TextColor3=C.txt, TextSize=10, Font=Enum.Font.Gotham,
-    TextXAlignment=Enum.TextXAlignment.Left, Parent=bossDropCard})
-local bossArrow = N("TextLabel",{Size=UDim2.new(0,16,1,0), Position=UDim2.new(1,-18,0,0),
-    BackgroundTransparency=1, Text="►",
-    TextColor3=C.sub, TextSize=9, Font=Enum.Font.GothamBold, Parent=bossDropCard})
-gmy = gmy + ROW_H + 2
+-- CULLING GAME
+secLabel(scrollGM, gmy, "CULLING GAME"); gmy = gmy + 18
 
-local bossItemsCard = N("Frame",{
-    Size=UDim2.new(1,-(CARD_M*2),0,#WORLD_BOSSES*ITEM_H),
-    Position=UDim2.new(0,CARD_M,0,gmy),
-    BackgroundColor3=C.card, BorderSizePixel=0, Visible=false, Parent=scrollGM,
-})
-CR(CARD_R, bossItemsCard); ST(C.sep, 0.8, bossItemsCard)
-
-local bossListOpen  = false
-local bossItemFrames = {}
-
-for i, b in ipairs(WORLD_BOSSES) do
-    local item = N("Frame",{
-        Size=UDim2.new(1,0,0,ITEM_H), Position=UDim2.new(0,0,0,(i-1)*ITEM_H),
-        BackgroundTransparency=1, BorderSizePixel=0, Parent=bossItemsCard})
-    local strip = N("Frame",{Size=UDim2.new(0,2,0,14), Position=UDim2.new(0,8,0.5,-7),
-        BackgroundColor3=i==1 and C.actS or C.sep, BorderSizePixel=0, Parent=item})
-    CR(1, strip)
-    local lbl = N("TextLabel",{Size=UDim2.new(1,-22,1,0), Position=UDim2.new(0,18,0,0),
-        BackgroundTransparency=1, Text=b.boss.." - "..b.world,
-        TextColor3=i==1 and C.txt or C.sub,
-        TextSize=9, Font=Enum.Font.Gotham,
-        TextXAlignment=Enum.TextXAlignment.Left, Parent=item})
-    bossItemFrames[i] = {strip=strip, label=lbl}
-    local idx = i
-    N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=item}
-    ).MouseButton1Click:Connect(function()
-        local old = bossItemFrames[selectedBoss]
-        if old then old.label.TextColor3=C.sub; old.strip.BackgroundColor3=C.sep end
-        selectedBoss = idx
-        lbl.TextColor3=C.txt; strip.BackgroundColor3=C.actS
-        bossVal.Text = b.boss.." - "..b.world
-        bossListOpen = false; bossArrow.Text = "►"
-        bossItemsCard.Visible = false
-    end)
-end
-
-N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=bossDropCard}
-).MouseButton1Click:Connect(function()
-    bossListOpen = not bossListOpen
-    bossArrow.Text = bossListOpen and "▾" or "►"
-    bossItemsCard.Visible = bossListOpen
-end)
-
-gmy = gmy + #WORLD_BOSSES*ITEM_H + PAD
-
-local bossCard = makeCard(scrollGM, gmy, ROW_H)
+local cullCard = makeCard(scrollGM, gmy, ROW_H)
 N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,12,0,0),
-    BackgroundTransparency=1, Text="Auto World Boss",
+    BackgroundTransparency=1, Text="Auto Culling Game",
     TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
-    TextXAlignment=Enum.TextXAlignment.Left, Parent=bossCard})
-local bossPill, bossKnob = makePill(bossCard, -48)
-local bossState = false
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=cullCard})
+local cullPill, cullKnob = makePill(cullCard, -48)
+local cullState = false
 N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
-    BackgroundTransparency=1, Text="", Parent=bossCard}
+    BackgroundTransparency=1, Text="", Parent=cullCard}
 ).MouseButton1Click:Connect(function()
-    bossState = not bossState; bossActive = bossState
-    TweenSvc:Create(bossPill, dti, {BackgroundColor3=bossState and C.tOn or C.tOff}):Play()
-    TweenSvc:Create(bossKnob, dti, {
-        Position=bossState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
-        BackgroundColor3=bossState and C.kOn or C.kOff,
+    cullState    = not cullState; cullingActive = cullState
+    TweenSvc:Create(cullPill, dti, {BackgroundColor3=cullState and C.tOn or C.tOff}):Play()
+    TweenSvc:Create(cullKnob, dti, {
+        Position=cullState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
+        BackgroundColor3=cullState and C.kOn or C.kOff,
     }):Play()
-    if bossState then task.spawn(bossLoop) end
+    if cullState then task.spawn(cullingLoop) end
+end)
+gmy = gmy + ROW_H + PAD
+
+-- Difficulty picker
+local diffCard = makeCard(scrollGM, gmy, ROW_H)
+N("TextLabel",{Size=UDim2.new(0,80,1,0), Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1, Text="Difficulty",
+    TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=diffCard})
+local diffIdx = 1
+local diffVal = N("TextLabel",{Size=UDim2.new(1,-110,1,0), Position=UDim2.new(0,90,0,0),
+    BackgroundTransparency=1, Text=CULLING_DIFFS[1],
+    TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=diffCard})
+local diffArrows = N("TextLabel",{Size=UDim2.new(0,30,1,0), Position=UDim2.new(1,-34,0,0),
+    BackgroundTransparency=1, Text="◀▶",
+    TextColor3=C.sub, TextSize=9, Font=Enum.Font.GothamBold, Parent=diffCard})
+N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=diffCard}
+).MouseButton1Click:Connect(function()
+    diffIdx = (diffIdx % #CULLING_DIFFS) + 1
+    cullingDifficulty = CULLING_DIFFS[diffIdx]
+    diffVal.Text = cullingDifficulty
+end)
+gmy = gmy + ROW_H + PAD
+
+local cullLeaveCard = makeCard(scrollGM, gmy, ROW_H)
+N("TextLabel",{Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1, Text="Auto leave at room",
+    TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=cullLeaveCard})
+makeNumInput(cullLeaveCard, -50, cullingLeaveRoom, 1, 51, function(v)
+    cullingLeaveRoom = v
 end)
 
 -- ════════════════════════════════════════════════════════
