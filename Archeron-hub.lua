@@ -62,6 +62,19 @@ local RARITY_COLOR = {
 -- ════════════════════════════════════════════════════════
 -- SHARED LOGIC
 -- ════════════════════════════════════════════════════════
+local function tpFighters()
+    local pos = hrp and hrp.Position
+    if not pos then return end
+    local ok, ff = pcall(function() return workspace.Client.Fighters end)
+    if not ok or not ff then return end
+    for _, f in ipairs(ff:GetChildren()) do
+        local root = f:FindFirstChild("HumanoidRootPart")
+            or (f:IsA("Model") and f.PrimaryPart)
+            or f:FindFirstChildWhichIsA("BasePart")
+        if root then pcall(function() root.CFrame = CFrame.new(pos) end) end
+    end
+end
+
 local function clearMovers()
     local h = lp.Character and lp.Character:FindFirstChild("HumanoidRootPart")
     if not h then return end
@@ -134,7 +147,7 @@ local function farmLoop()
         local part  = findNPC(enemy)
         if part then
             lastTpW = nil; clearMovers()
-            hrp.CFrame = CFrame.new(part.Position)
+            hrp.CFrame = CFrame.new(part.Position); tpFighters()
             task.wait(0.05); waitDead(part, 15)
         else
             local wn = w and w.name or ""
@@ -172,21 +185,23 @@ end
 
 local function findNearestDoor()
     local hrpPos = (hrp and hrp.Position) or Vector3.new()
-    local best, bestD = nil, math.huge
+    local best, bestD, bestPP = nil, math.huge, nil
     local ok, mapFolder = pcall(function()
         return workspace.Client.Maps["Dungeon Easy"].Map
     end)
-    if not ok or not mapFolder then return nil end
+    if not ok or not mapFolder then return nil, nil end
     for _,v in ipairs(mapFolder:GetDescendants()) do
-        if v:IsA("Model") and v.Name == "Door" then
+        if v:IsA("Model") and v.Parent and v.Parent.Name == "Doors" then
             local mainPart = v:FindFirstChild("Main")
-            if mainPart and mainPart:IsA("BasePart") then
+            local openPP   = v:FindFirstChild("OpenDoor")
+            if mainPart and mainPart:IsA("BasePart")
+            and openPP and openPP:IsA("ProximityPrompt") then
                 local d = (mainPart.Position - hrpPos).Magnitude
-                if d < bestD then bestD = d; best = mainPart end
+                if d < bestD then bestD = d; best = mainPart; bestPP = openPP end
             end
         end
     end
-    return best
+    return best, bestPP
 end
 
 local function triggerDoor(doorPart)
@@ -228,7 +243,7 @@ end
 local function getDungeonRoom()
     local ok, v = pcall(function()
         return workspace.Client.Maps["Dungeon Easy"]
-            .GamemodeSessions.Global.StateManager.CurrentRoom.Value
+            .GamemodeSessions.Global.StateManager.RoomsCleared.Value
     end)
     return ok and tonumber(v) or 0
 end
@@ -244,7 +259,7 @@ local function dungeonLoop()
             local en = findEnemiesInArea("Dungeon Easy")
             if #en == 0 then break end
             local t = en[math.random(#en)]
-            clearMovers(); hrp.CFrame = CFrame.new(t.Position)
+            clearMovers(); hrp.CFrame = CFrame.new(t.Position); tpFighters()
             task.wait(0.05); waitDead(t, 15); tries = tries - 1
         end
         if not dungeonActive then break end
@@ -252,11 +267,10 @@ local function dungeonLoop()
         local curRoom = getDungeonRoom()
         if curRoom >= dungeonLeaveRoom then dungeonActive = false; leaveGamemode(); break end
         task.wait(0.4)
-        local door = findNearestDoor()
-        if door then
-            clearMovers(); hrp.CFrame = CFrame.new(door.Position)
-            task.wait(0.3); triggerDoor(door)
-            -- wait for CurrentRoom to increment instead of fixed delay
+        local door, doorPP = findNearestDoor()
+        if door and doorPP then
+            clearMovers(); hrp.CFrame = CFrame.new(door.Position); tpFighters()
+            task.wait(0.3); pcall(fireproximityprompt, doorPP)
             local wc = 0
             while dungeonActive and wc < 20 do
                 local r = getDungeonRoom()
@@ -280,36 +294,39 @@ local function joinCullingGame()
     })
 end
 
-local function getCullingRoom()
+local function getCullingWave()
     local ok, v = pcall(function()
-        return workspace.Client.Maps["Culling Game"]
-            .GamemodeSessions.Global.StateManager.CurrentRoom.Value
+        local sessions = workspace.Client.Maps["Culling Game"].GamemodeSessions
+        local session  = sessions:GetChildren()[1]
+        return session.StateManager.CurrentWave.Value
     end)
     return ok and tonumber(v) or 0
 end
 
 local function findNearestCullingDoor()
     local hrpPos = (hrp and hrp.Position) or Vector3.new()
-    local best, bestD = nil, math.huge
+    local best, bestD, bestPP = nil, math.huge, nil
     local ok, mapFolder = pcall(function()
         return workspace.Client.Maps["Culling Game"].Map
     end)
-    if not ok or not mapFolder then return nil end
+    if not ok or not mapFolder then return nil, nil end
     for _,v in ipairs(mapFolder:GetDescendants()) do
-        if v:IsA("Model") and v.Name == "Door" then
+        if v:IsA("Model") and v.Parent and v.Parent.Name == "Doors" then
             local mainPart = v:FindFirstChild("Main")
-            if mainPart and mainPart:IsA("BasePart") then
+            local openPP   = v:FindFirstChild("OpenDoor")
+            if mainPart and mainPart:IsA("BasePart")
+            and openPP and openPP:IsA("ProximityPrompt") then
                 local d = (mainPart.Position - hrpPos).Magnitude
-                if d < bestD then bestD = d; best = mainPart end
+                if d < bestD then bestD = d; best = mainPart; bestPP = openPP end
             end
         end
     end
-    return best
+    return best, bestPP
 end
 
 local function cullingLoop()
     joinCullingGame(); task.wait(4)
-    local lastRoom = getCullingRoom()
+    local lastWave = getCullingWave()
     while cullingActive do
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
@@ -318,21 +335,21 @@ local function cullingLoop()
             local en = findEnemiesInArea("Culling Game")
             if #en == 0 then break end
             local t = en[math.random(#en)]
-            clearMovers(); hrp.CFrame = CFrame.new(t.Position)
+            clearMovers(); hrp.CFrame = CFrame.new(t.Position); tpFighters()
             task.wait(0.05); waitDead(t, 15); tries = tries - 1
         end
         if not cullingActive then break end
         task.wait(1.5)
-        local curRoom = getCullingRoom()
-        if curRoom >= cullingLeaveRoom then cullingActive = false; leaveGamemode(); break end
-        local door = findNearestCullingDoor()
-        if door then
-            clearMovers(); hrp.CFrame = CFrame.new(door.Position)
-            task.wait(0.3); triggerDoor(door)
+        local curWave = getCullingWave()
+        if curWave >= cullingLeaveRoom then cullingActive = false; leaveGamemode(); break end
+        local door, doorPP = findNearestCullingDoor()
+        if door and doorPP then
+            clearMovers(); hrp.CFrame = CFrame.new(door.Position); tpFighters()
+            task.wait(0.3); pcall(fireproximityprompt, doorPP)
             local wc = 0
             while cullingActive and wc < 20 do
-                local r = getCullingRoom()
-                if r ~= lastRoom then lastRoom = r; break end
+                local w = getCullingWave()
+                if w ~= lastWave then lastWave = w; break end
                 task.wait(0.5); wc = wc + 1
             end
         else task.wait(1) end
@@ -350,7 +367,7 @@ local function trialLoop()
             local en = findEnemiesInArea("Trial Easy")
             if #en == 0 then break end
             local t = en[math.random(#en)]
-            clearMovers(); hrp.CFrame = CFrame.new(t.Position)
+            clearMovers(); hrp.CFrame = CFrame.new(t.Position); tpFighters()
             task.wait(0.05); waitDead(t, 15); tries = tries - 1
         end
         if not trialActive then break end
