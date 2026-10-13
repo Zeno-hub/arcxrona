@@ -50,6 +50,7 @@ local WORLDS = {
         { name = "Chaos Arthur",rarity = 6 },
     }},
 }
+
 local RARITY_COLOR = {
     Color3.fromRGB( 80,200, 80),
     Color3.fromRGB( 80,140,255),
@@ -57,6 +58,10 @@ local RARITY_COLOR = {
     Color3.fromRGB(220, 50, 50),
     Color3.fromRGB(200, 60,255),
     Color3.fromRGB(255,210,  0),
+}
+
+local WORLD_BOSSES = {
+    { world = "Sins Kingdom",    boss = "Demon Melyode"   },
 }
 
 -- ════════════════════════════════════════════════════════
@@ -140,6 +145,43 @@ local function farmLoop()
             local wn = w and w.name or ""
             if lastTpW ~= wn then tpWorld(wn); lastTpW = wn; task.wait(3.5)
             else task.wait(0.8) end
+        end
+        task.wait(0.05)
+    end
+end
+
+local bossActive   = false
+local selectedBoss = 1
+
+local function findBossPart(worldName, bossName)
+    local ok, folder = pcall(function()
+        return workspace.Server.Enemies[worldName][bossName]
+    end)
+    if not ok or not folder then return nil end
+    for _, v in ipairs(folder:GetDescendants()) do
+        if v:IsA("BasePart") and not v:GetAttribute("Died")
+        and v:GetAttribute("EnemyName") then return v end
+    end
+    return nil
+end
+
+local function bossLoop()
+    local lastTp = nil
+    while bossActive do
+        char = lp.Character; if not char then task.wait(1); continue end
+        hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
+        local b    = WORLD_BOSSES[selectedBoss]
+        local part = b and findBossPart(b.world, b.boss)
+        if part then
+            lastTp = nil
+            clearMovers(); hrp.CFrame = CFrame.new(part.Position)
+            task.wait(0.05); waitDead(part, 60)
+        else
+            if b and lastTp ~= b.world then
+                tpWorld(b.world); lastTp = b.world; task.wait(4)
+            else
+                task.wait(3)
+            end
         end
         task.wait(0.05)
     end
@@ -812,6 +854,89 @@ N("TextLabel",{Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,12,0,0),
     TextXAlignment=Enum.TextXAlignment.Left, Parent=leaveWaveCard})
 makeNumInput(leaveWaveCard, -50, trialLeaveWave, 1, 51, function(v)
     trialLeaveWave = v
+end)
+
+-- ── WORLD BOSS ───────────────────────────────────────
+gmy = gmy + ROW_H + PAD + 4
+secLabel(scrollGM, gmy, "WORLD BOSS"); gmy = gmy + 18
+
+local bossDropCard = makeCard(scrollGM, gmy, ROW_H)
+N("TextLabel",{Size=UDim2.new(0,52,1,0), Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1, Text="Boss",
+    TextColor3=C.sub, TextSize=10, Font=Enum.Font.GothamBold,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=bossDropCard})
+local bossVal = N("TextLabel",{Size=UDim2.new(1,-80,1,0), Position=UDim2.new(0,64,0,0),
+    Text=WORLD_BOSSES[1].boss.." - "..WORLD_BOSSES[1].world,
+    BackgroundTransparency=1,
+    TextColor3=C.txt, TextSize=10, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=bossDropCard})
+local bossArrow = N("TextLabel",{Size=UDim2.new(0,16,1,0), Position=UDim2.new(1,-18,0,0),
+    BackgroundTransparency=1, Text="►",
+    TextColor3=C.sub, TextSize=9, Font=Enum.Font.GothamBold, Parent=bossDropCard})
+gmy = gmy + ROW_H + 2
+
+local bossItemsCard = N("Frame",{
+    Size=UDim2.new(1,-(CARD_M*2),0,#WORLD_BOSSES*ITEM_H),
+    Position=UDim2.new(0,CARD_M,0,gmy),
+    BackgroundColor3=C.card, BorderSizePixel=0, Visible=false, Parent=scrollGM,
+})
+CR(CARD_R, bossItemsCard); ST(C.sep, 0.8, bossItemsCard)
+
+local bossListOpen  = false
+local bossItemFrames = {}
+
+for i, b in ipairs(WORLD_BOSSES) do
+    local item = N("Frame",{
+        Size=UDim2.new(1,0,0,ITEM_H), Position=UDim2.new(0,0,0,(i-1)*ITEM_H),
+        BackgroundTransparency=1, BorderSizePixel=0, Parent=bossItemsCard})
+    local strip = N("Frame",{Size=UDim2.new(0,2,0,14), Position=UDim2.new(0,8,0.5,-7),
+        BackgroundColor3=i==1 and C.actS or C.sep, BorderSizePixel=0, Parent=item})
+    CR(1, strip)
+    local lbl = N("TextLabel",{Size=UDim2.new(1,-22,1,0), Position=UDim2.new(0,18,0,0),
+        BackgroundTransparency=1, Text=b.boss.." - "..b.world,
+        TextColor3=i==1 and C.txt or C.sub,
+        TextSize=9, Font=Enum.Font.Gotham,
+        TextXAlignment=Enum.TextXAlignment.Left, Parent=item})
+    bossItemFrames[i] = {strip=strip, label=lbl}
+    local idx = i
+    N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=item}
+    ).MouseButton1Click:Connect(function()
+        local old = bossItemFrames[selectedBoss]
+        if old then old.label.TextColor3=C.sub; old.strip.BackgroundColor3=C.sep end
+        selectedBoss = idx
+        lbl.TextColor3=C.txt; strip.BackgroundColor3=C.actS
+        bossVal.Text = b.boss.." - "..b.world
+        bossListOpen = false; bossArrow.Text = "►"
+        bossItemsCard.Visible = false
+    end)
+end
+
+N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=bossDropCard}
+).MouseButton1Click:Connect(function()
+    bossListOpen = not bossListOpen
+    bossArrow.Text = bossListOpen and "▾" or "►"
+    bossItemsCard.Visible = bossListOpen
+end)
+
+gmy = gmy + #WORLD_BOSSES*ITEM_H + PAD
+
+local bossCard = makeCard(scrollGM, gmy, ROW_H)
+N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1, Text="Auto World Boss",
+    TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=bossCard})
+local bossPill, bossKnob = makePill(bossCard, -48)
+local bossState = false
+N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
+    BackgroundTransparency=1, Text="", Parent=bossCard}
+).MouseButton1Click:Connect(function()
+    bossState = not bossState; bossActive = bossState
+    TweenSvc:Create(bossPill, dti, {BackgroundColor3=bossState and C.tOn or C.tOff}):Play()
+    TweenSvc:Create(bossKnob, dti, {
+        Position=bossState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
+        BackgroundColor3=bossState and C.kOn or C.kOff,
+    }):Play()
+    if bossState then task.spawn(bossLoop) end
 end)
 
 -- ════════════════════════════════════════════════════════
