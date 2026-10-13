@@ -206,6 +206,12 @@ local function joinGamemode(name)
     })
 end
 
+local function leaveGamemode()
+    fireBridgeNet({
+        {"General","Gamemodes","Leave",n=3},"\x02"
+    })
+end
+
 local function getTrialWave()
     local ok, v = pcall(function()
         return workspace.Client.Maps["Trial Easy"]
@@ -238,7 +244,9 @@ local function dungeonLoop()
         end
         if not dungeonActive then break end
         local curRoom = getDungeonRoom()
-        if curRoom >= dungeonLeaveRoom then dungeonActive = false; break end
+        if curRoom >= dungeonLeaveRoom then
+    dungeonActive = false; leaveGamemode(); break end
+    
         task.wait(0.4)
         local door = findNearestDoor()
         if door then
@@ -271,8 +279,9 @@ local function trialLoop()
         end
         if not trialActive then break end
         local curWave = getTrialWave()
-        if curWave >= trialLeaveWave then trialActive = false; break end
-        -- wait for CurrentWave to increment
+        if curWave >= trialLeaveWave then
+    trialActive = false; leaveGamemode(); break end
+        
         local waitCycles = 0
         while trialActive and waitCycles < 60 do
             local w = getTrialWave()
@@ -768,7 +777,7 @@ N("TextLabel",{Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,12,0,0),
     BackgroundTransparency=1, Text="Auto leave at room",
     TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=leaveRoomCard})
-makeNumInput(leaveRoomCard, -50, dungeonLeaveRoom, 1, 50, function(v)
+makeNumInput(leaveRoomCard, -50, dungeonLeaveRoom, 1, 51, function(v)
     dungeonLeaveRoom = v
 end)
 gmy = gmy + ROW_H + PAD + 4
@@ -801,7 +810,7 @@ N("TextLabel",{Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,12,0,0),
     BackgroundTransparency=1, Text="Auto leave at wave",
     TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=leaveWaveCard})
-makeNumInput(leaveWaveCard, -50, trialLeaveWave, 1, 50, function(v)
+makeNumInput(leaveWaveCard, -50, trialLeaveWave, 1, 51, function(v)
     trialLeaveWave = v
 end)
 
