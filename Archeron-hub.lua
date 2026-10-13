@@ -1,3 +1,4 @@
+local ok,err=pcall(function()
 -- Archeron Hub v2.4 | World Farm + Dungeon/Trial Auto
 -- Horizontal tabs · Rounded cards · BridgeNet TP
 
@@ -881,3 +882,4 @@ UIS.InputEnded:Connect(function(i)
         if not dotMov then main.Visible=true;dot.Visible=false end
     end
 end)
+if not ok then warn("ARCHERON ERROR: "..tostring(err)) end
