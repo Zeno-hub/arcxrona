@@ -98,8 +98,8 @@ local enabledEnemies = {}
 local function resetEnemies()
     enabledEnemies = {}
     local w = WORLDS[selectedWorld]
-    if w then for i=1,#w.enemies do enabledEnemies[i]=true end end
-end
+    if w then for i=1,#w.enemies do enabledEnemies[i]=false end end
+    
 resetEnemies()
 
 local function tpWorld(name)
@@ -149,11 +149,17 @@ local trialActive     = false
 local dungeonLeaveRoom = 10
 local trialLeaveWave  = 10
 
-local function findEnemiesInDungeon()
+local function findEnemiesInArea(folderName)
     local list={}
-    for _,v in ipairs(workspace:GetDescendants()) do
+    local ok,folder=pcall(function()
+        return workspace.Server.Enemies.Gamemodes[folderName]
+    end)
+    if not ok or not folder then return list end
+    for _,v in ipairs(folder:GetDescendants()) do
         if v:IsA("BasePart") and not v:GetAttribute("Died")
-        and v:GetAttribute("EnemyName") then table.insert(list,v) end
+        and v:GetAttribute("EnemyName") then
+            table.insert(list,v)
+        end
     end
     return list
 end
@@ -206,7 +212,7 @@ local function dungeonLoop()
         -- clear all enemies in current room
         local tries=40
         while dungeonActive and tries>0 do
-            local en=findEnemiesInDungeon()
+            local en=findEnemiesInArea("Dungeon Easy")
             if #en==0 then break end
             local t=en[math.random(#en)]
             clearMovers(); hrp.CFrame=CFrame.new(t.Position)
@@ -234,7 +240,7 @@ local function trialLoop()
         hrp=char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1);continue end
         local tries=40
         while trialActive and tries>0 do
-            local en=findEnemiesInDungeon()
+            local en=findEnemiesInArea("Trial Easy")
             if #en==0 then break end
             local t=en[math.random(#en)]
             clearMovers(); hrp.CFrame=CFrame.new(t.Position)
@@ -245,7 +251,7 @@ local function trialLoop()
         -- wait for next wave spawn (enemy count resets)
         local waitCycles=0
         while trialActive and waitCycles<60 do
-            if #findEnemiesInDungeon()>0 then wave=wave+1;break end
+            if #findEnemiesInArea("Trial Easy")>0 then wave=wave+1;break end
             task.wait(0.5); waitCycles=waitCycles+1
         end
     end
@@ -282,7 +288,7 @@ local GW       = 510
 local HDR_H    = 34
 local TBAR_H   = 34   -- horizontal tab bar
 local BOT_H    = 48
-local CONT_H   = 246
+local CONT_H   = 200
 local TOTAL_H  = HDR_H + TBAR_H + CONT_H + BOT_H  -- 362
 local ROW_H    = 34
 local ITEM_H   = 28
@@ -603,6 +609,8 @@ doMainLayout=function()
     else
         enemyItemsCard.Visible=false
     end
+    y=y+PAD
+        farmCard.Position=UDim2.new(0,CARD_M,0,y)
 end
 
 buildEnemyList=function()
@@ -660,6 +668,26 @@ buildEnemyList=function()
 end
 
 buildEnemyList(); doMainLayout()
+
+local farmCard=makeCard(scrollMain,0,ROW_H)
+N("TextLabel",{Size=UDim2.new(0,100,1,0),Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1,Text="Auto Farm",
+    TextColor3=C.txt,TextSize=10,Font=Enum.Font.GothamBold,
+    TextXAlignment=Enum.TextXAlignment.Left,Parent=farmCard})
+local pill,knob=makePill(farmCard,-48)
+local farmState=false
+local ti=TweenInfo.new(0.14,Enum.EasingStyle.Quad)
+N("TextButton",{Size=UDim2.new(0,96,1,0),Position=UDim2.new(1,-100,0,0),
+    BackgroundTransparency=1,Text="",Parent=farmCard}
+).MouseButton1Click:Connect(function()
+    farmState=not farmState; farmActive=farmState
+    TweenSvc:Create(pill,ti,{BackgroundColor3=farmState and C.tOn or C.tOff}):Play()
+    TweenSvc:Create(knob,ti,{
+        Position=farmState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
+        BackgroundColor3=farmState and C.kOn or C.kOff,
+    }):Play()
+    if farmState then task.spawn(farmLoop) end
+end)
 
 -- ════════════════════════════════════════════════════════
 -- TAB 2: GAMEMODE
@@ -816,35 +844,6 @@ N("TextLabel",{Size=UDim2.new(0,120,1,0),Position=UDim2.new(0,48,0,0),
     BackgroundTransparency=1,Text=lp.DisplayName,
     TextColor3=C.txt,TextSize=10,Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left,Parent=botBar})
-
-N("Frame",{Size=UDim2.new(0,1,0,26),Position=UDim2.new(1,-94,0.5,-13),
-    BackgroundColor3=C.sep,BorderSizePixel=0,Parent=botBar})
-N("TextLabel",{Size=UDim2.new(0,52,1,0),Position=UDim2.new(1,-92,0,0),
-    BackgroundTransparency=1,Text="Auto\nFarm",TextColor3=C.sub,
-    TextSize=8,Font=Enum.Font.GothamBold,
-    TextXAlignment=Enum.TextXAlignment.Right,
-    TextYAlignment=Enum.TextYAlignment.Center,Parent=botBar})
-
-local pill=N("Frame",{Size=UDim2.new(0,40,0,20),Position=UDim2.new(1,-48,0.5,-10),
-    BackgroundColor3=C.tOff,BorderSizePixel=0,Parent=botBar})
-CR(999,pill)
-local knob=N("Frame",{Size=UDim2.new(0,16,0,16),Position=UDim2.new(0,2,0.5,-8),
-    BackgroundColor3=C.kOff,BorderSizePixel=0,Parent=pill})
-CR(999,knob)
-
-local farmState=false
-local ti=TweenInfo.new(0.14,Enum.EasingStyle.Quad)
-N("TextButton",{Size=UDim2.new(0,96,1,0),Position=UDim2.new(1,-98,0,0),
-    BackgroundTransparency=1,Text="",Parent=botBar}
-).MouseButton1Click:Connect(function()
-    farmState=not farmState; farmActive=farmState
-    TweenSvc:Create(pill,ti,{BackgroundColor3=farmState and C.tOn or C.tOff}):Play()
-    TweenSvc:Create(knob,ti,{
-        Position=farmState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
-        BackgroundColor3=farmState and C.kOn or C.kOff,
-    }):Play()
-    if farmState then task.spawn(farmLoop) end
-end)
 
 -- ════════════════════════════════════════════════════════
 -- MINIMIZE DOT
