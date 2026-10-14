@@ -65,13 +65,14 @@ local RARITY_COLOR = {
 local function tpFighters()
     local pos = hrp and hrp.Position
     if not pos then return end
+    local cf = CFrame.new(pos + Vector3.new(0, 3, 0))
     local ok, ff = pcall(function() return workspace.Client.Fighters end)
     if not ok or not ff then return end
     for _, f in ipairs(ff:GetChildren()) do
-        local root = f:FindFirstChild("HumanoidRootPart")
-            or (f:IsA("Model") and f.PrimaryPart)
-            or f:FindFirstChildWhichIsA("BasePart")
-        if root then pcall(function() root.CFrame = CFrame.new(pos) end) end
+        pcall(function()
+            local root = f:FindFirstChild("HumanoidRootPart")
+            if root then root.CFrame = cf end
+        end)
     end
 end
 
@@ -147,7 +148,7 @@ local function farmLoop()
         local part  = findNPC(enemy)
         if part then
             lastTpW = nil; clearMovers()
-            hrp.CFrame = CFrame.new(part.Position); tpFighters()
+            hrp.CFrame = CFrame.new(part.Position + Vector3.new(0, 3, 0)); tpFighters()
             task.wait(0.05); waitDead(part, 15)
         else
             local wn = w and w.name or ""
@@ -260,7 +261,7 @@ local function dungeonLoop()
             local en = findEnemiesInArea("Dungeon Easy")
             if #en == 0 then break end
             local t = en[math.random(#en)]
-            clearMovers(); hrp.CFrame = CFrame.new(t.Position); tpFighters()
+            clearMovers(); hrp.CFrame = CFrame.new(t.Position + Vector3.new(0, 3, 0)); tpFighters()
             task.wait(0.05); waitDead(t, 15); tries = tries - 1
         end
         if not dungeonActive then break end
@@ -277,6 +278,12 @@ local function dungeonLoop()
                 local r = getDungeonRoom()
                 if r ~= lastRoom then lastRoom = r; break end
                 task.wait(0.5); wc = wc + 1
+            end
+            -- tunggu enemy spawn setelah room baru kebuka
+            local spawnWait = 0
+            while dungeonActive and spawnWait < 10 do
+                if #findEnemiesInArea("Dungeon Easy") > 0 then break end
+                task.wait(0.3); spawnWait = spawnWait + 1
             end
         else task.wait(1) end
     end
@@ -315,7 +322,7 @@ local function cullingLoop()
             local en = findEnemiesInArea("Culling Game")
             if #en == 0 then break end
             local t = en[math.random(#en)]
-            clearMovers(); hrp.CFrame = CFrame.new(t.Position); tpFighters()
+            clearMovers(); hrp.CFrame = CFrame.new(t.Position + Vector3.new(0, 3, 0)); tpFighters()
             task.wait(0.05); waitDead(t, 15); tries = tries - 1
         end
         if not cullingActive then break end
@@ -342,7 +349,7 @@ local function trialLoop()
             local en = findEnemiesInArea("Trial Easy")
             if #en == 0 then break end
             local t = en[math.random(#en)]
-            clearMovers(); hrp.CFrame = CFrame.new(t.Position); tpFighters()
+            clearMovers(); hrp.CFrame = CFrame.new(t.Position + Vector3.new(0, 3, 0)); tpFighters()
             task.wait(0.05); waitDead(t, 15); tries = tries - 1
         end
         if not trialActive then break end
