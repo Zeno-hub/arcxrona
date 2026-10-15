@@ -1,4 +1,4 @@
--- Archeron Hub v2.5 | World Farm + Dungeon/Trial Auto
+-- Archeron Hub v2.5 | World Farm + Dungeon/Trial Auto + Priority + Shield Skip + Auto-Detect
 -- Horizontal tabs · Rounded cards · BridgeNet TP
 
 -- kill semua loop dari eksekusi sebelumnya
@@ -63,6 +63,85 @@ local RARITY_COLOR = {
     Color3.fromRGB(220, 50, 50),
     Color3.fromRGB(200, 60,255),
     Color3.fromRGB(255,210,  0),
+}
+
+-- difficulty → sort order & color (untuk auto-detect dari Maps)
+local DIFFICULTY_ORDER = {Easy=1, Medium=2, Hard=3, Insane=4, Boss=5, Secret=6}
+local DIFFICULTY_COLOR = {
+    Easy   = Color3.fromRGB( 80,200, 80),
+    Medium = Color3.fromRGB( 80,140,255),
+    Hard   = Color3.fromRGB(255,140, 40),
+    Insane = Color3.fromRGB(220, 50, 50),
+    Boss   = Color3.fromRGB(200, 60,255),
+    Secret = Color3.fromRGB(255,210,  0),
+}
+
+-- auto-detect world enemies dari workspace.Server.Enemies.Maps
+-- hasilnya digabung ke WORLDS (append world baru, skip kalau nama sudah ada)
+local function autoDetectWorlds()
+    local ok, mapsFolder = pcall(function()
+        return workspace:WaitForChild("Server",3):WaitForChild("Enemies",3):WaitForChild("Maps",3)
+    end)
+    if not ok or not mapsFolder then return end
+
+    -- index existing world names
+    local existing = {}
+    for _, w in ipairs(WORLDS) do existing[w.name] = true end
+
+    for _, worldFolder in ipairs(mapsFolder:GetChildren()) do
+        local wName = worldFolder.Name
+        -- scan descendants untuk BaseParts dengan EnemyName + Difficulty
+        local seen = {}   -- dedup by EnemyName
+        local enemies = {}
+        for _, v in ipairs(worldFolder:GetDescendants()) do
+            if v:IsA("BasePart") then
+                local en   = v:GetAttribute("EnemyName")
+                local diff = v:GetAttribute("Difficulty")
+                if en and diff and not seen[en] then
+                    seen[en] = true
+                    local order = DIFFICULTY_ORDER[diff] or 99
+                    local col   = DIFFICULTY_COLOR[diff] or Color3.fromRGB(150,150,150)
+                    table.insert(enemies, {name=en, rarity=order, rarityColor=col, difficulty=diff})
+                end
+            end
+        end
+        -- sort easy → hard
+        table.sort(enemies, function(a,b) return a.rarity < b.rarity end)
+
+        if #enemies > 0 then
+            if existing[wName] then
+                -- merge: tambah enemy yang belum ada di world yang sudah exist
+                for _, w in ipairs(WORLDS) do
+                    if w.name == wName then
+                        local existEn = {}
+                        for _, e in ipairs(w.enemies) do existEn[e.name] = true end
+                        for _, e in ipairs(enemies) do
+                            if not existEn[e.name] then
+                                table.insert(w.enemies, e)
+                            end
+                        end
+                        -- re-sort
+                        table.sort(w.enemies, function(a,b) return (a.rarity or 1) < (b.rarity or 1) end)
+                        break
+                    end
+                end
+            else
+                table.insert(WORLDS, {name=wName, enemies=enemies, autoDetected=true})
+            end
+        end
+    end
+end
+task.spawn(autoDetectWorlds)
+
+-- ── PRIORITY SYSTEM ─────────────────────────────────────────
+local PRIORITY_FEATURES = {"Mob Farm","Dungeon Easy","Trial Easy","Culling Game","Bounty","Quest"}
+local priorities = {
+    ["Mob Farm"]    = 3,
+    ["Dungeon Easy"]= 1,
+    ["Trial Easy"]  = 2,
+    ["Culling Game"]= 4,
+    ["Bounty"]      = 5,
+    ["Quest"]       = 6,
 }
 
 -- ════════════════════════════════════════════════════════
@@ -241,14 +320,31 @@ local function findEnemiesInArea(folderName)
     return findEnemiesInRoom(folderName, nil)
 end
 
--- cari enemy terdekat dari hrp dalam list
+-- cek apakah enemy punya Shield model (skip kalau ada)
+local function hasShield(part)
+    local model = part.Parent
+    if not model then return false end
+    for _, v in ipairs(model:GetChildren()) do
+        if v:IsA("Model") and v.Name:lower():find("shield") then return true end
+    end
+    return false
+end
+
+-- cari enemy terdekat dari hrp dalam list, skip yang bershield
 local function nearestEnemy(list)
     if #list == 0 then return nil end
-    if not hrp then return list[1] end
+    if not hrp then
+        for _, e in ipairs(list) do
+            if not hasShield(e) then return e end
+        end
+        return nil
+    end
     local best, bestD = nil, math.huge
     for _, e in ipairs(list) do
-        local d = (e.Position - hrp.Position).Magnitude
-        if d < bestD then bestD = d; best = e end
+        if not hasShield(e) then
+            local d = (e.Position - hrp.Position).Magnitude
+            if d < bestD then bestD = d; best = e end
+        end
     end
     return best
 end
@@ -385,19 +481,6 @@ local function dungeonLoop()
     end
 end
 
-local function joinCullingGame()
-    local ok, pp = pcall(function()
-        return workspace.Server.ProximityPrompts["Cursed Academy"]["Culling Game"]
-    end)
-    if ok and pp and fireproximityprompt then
-        pcall(fireproximityprompt, pp)
-        task.wait(1.5)
-    end
-    fireBridgeNet({
-        {"General","Parties","SetDifficulty",cullingDifficulty,n=4},"\x02"
-    })
-end
-
 local function getCullingWave()
     local ok, v = pcall(function()
         local sessions = workspace.Client.Maps["Culling Game"].GamemodeSessions
@@ -408,7 +491,7 @@ local function getCullingWave()
 end
 
 local function cullingLoop()
-    joinCullingGame(); task.wait(4)
+    joinGamemode("Culling Game"); task.wait(4)
     local lastWave = getCullingWave()
     while cullingActive and alive() do
         char = lp.Character; if not char then task.wait(1); continue end
@@ -797,6 +880,65 @@ N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
     if farmState then task.spawn(farmLoop) end
 end)
 
+-- ── PRIORITY TABLE ──────────────────────────────────────────
+-- compact table: kolom Fitur | kolom Priority (input 1-10)
+local PRIO_ROW_H = 24
+local PRIO_HDR_H = 18
+local prioCardH  = PRIO_HDR_H + #PRIORITY_FEATURES * PRIO_ROW_H + 4
+local prioCard   = makeCard(scrollMain, 0, prioCardH) -- y diset di doMainLayout
+
+-- header row
+local prioHdr = N("Frame",{
+    Size=UDim2.new(1,0,0,PRIO_HDR_H), Position=UDim2.new(0,0,0,0),
+    BackgroundTransparency=1, BorderSizePixel=0, Parent=prioCard,
+})
+N("TextLabel",{Size=UDim2.new(0,56,1,0), Position=UDim2.new(0,10,0,0),
+    BackgroundTransparency=1, Text="PRIORITY",
+    TextColor3=C.sub, TextSize=8, Font=Enum.Font.GothamBold,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=prioHdr})
+N("TextLabel",{Size=UDim2.new(1,-56,1,0), Position=UDim2.new(0,66,0,0),
+    BackgroundTransparency=1, Text="1 = tertinggi  |  Mob Farm · Dungeon · Trial · Culling · Bounty · Quest",
+    TextColor3=C.sub, TextSize=7, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=prioHdr})
+
+for ri, fname in ipairs(PRIORITY_FEATURES) do
+    local ry = PRIO_HDR_H + (ri-1)*PRIO_ROW_H
+    local row = N("Frame",{
+        Size=UDim2.new(1,0,0,PRIO_ROW_H), Position=UDim2.new(0,0,0,ry),
+        BackgroundTransparency=1, BorderSizePixel=0, Parent=prioCard,
+    })
+    -- subtle separator except last
+    if ri < #PRIORITY_FEATURES then
+        N("Frame",{Size=UDim2.new(1,-16,0,1), Position=UDim2.new(0,8,1,-1),
+            BackgroundColor3=C.sep, BackgroundTransparency=0.5,
+            BorderSizePixel=0, Parent=row})
+    end
+    N("TextLabel",{Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,10,0,0),
+        BackgroundTransparency=1, Text=fname,
+        TextColor3=C.txt, TextSize=9, Font=Enum.Font.Gotham,
+        TextXAlignment=Enum.TextXAlignment.Left, Parent=row})
+    -- number input box
+    local pbox = N("Frame",{
+        Size=UDim2.new(0,32,0,18), Position=UDim2.new(1,-40,0.5,-9),
+        BackgroundColor3=C.input, BorderSizePixel=0, Parent=row,
+    })
+    CR(5, pbox); ST(C.sep, 0.8, pbox)
+    local ptb = N("TextBox",{
+        Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
+        Text=tostring(priorities[fname] or ri),
+        TextColor3=C.txt, TextSize=9, Font=Enum.Font.GothamBold,
+        ClearTextOnFocus=false, Parent=pbox,
+    })
+    local fn = fname
+    ptb.FocusLost:Connect(function()
+        local v = tonumber(ptb.Text)
+        if not v then v = priorities[fn] or ri end
+        v = math.clamp(math.floor(v), 1, 10)
+        ptb.Text = tostring(v)
+        priorities[fn] = v
+    end)
+end
+
 -- Layout engine
 doMainLayout = function()
     local y = PAD
@@ -820,7 +962,8 @@ doMainLayout = function()
         enemyItemsCard.Visible = false
         y = y + PAD
     end
-    farmCard.Position = UDim2.new(0,CARD_M,0,y)
+    farmCard.Position  = UDim2.new(0,CARD_M,0,y); y = y + ROW_H + PAD
+    prioCard.Position  = UDim2.new(0,CARD_M,0,y)
 end
 
 buildEnemyList = function()
