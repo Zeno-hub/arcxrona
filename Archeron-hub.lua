@@ -134,15 +134,34 @@ end
 task.spawn(autoDetectWorlds)
 
 -- ── PRIORITY SYSTEM ─────────────────────────────────────────
-local PRIORITY_FEATURES = {"Mob Farm","Dungeon Easy","Trial Easy","Culling Game","Bounty","Quest"}
+local PRIORITY_FEATURES = {"Mob Farm","Dungeon Easy","Trial Easy","Culling Game","World Boss","Bounty","Quest"}
 local priorities = {
     ["Mob Farm"]    = 3,
     ["Dungeon Easy"]= 1,
     ["Trial Easy"]  = 2,
     ["Culling Game"]= 4,
-    ["Bounty"]      = 5,
-    ["Quest"]       = 6,
+    ["World Boss"]  = 5,
+    ["Bounty"]      = 6,
+    ["Quest"]       = 7,
 }
+
+-- ── WORLD BOSS ───────────────────────────────────────────────
+local worldBossActive = false
+
+-- scan workspace.Server.WorldBosses[worldName] untuk boss aktif
+local function detectWorldBoss()
+    local w = WORLDS[selectedWorld]
+    if not w then return nil end
+    local ok, wbFolder = pcall(function()
+        return workspace.Server.WorldBosses[w.name]
+    end)
+    if not ok or not wbFolder then return nil end
+    -- folder ada isinya = boss spawned; cari BasePart pertama sebagai target TP
+    for _, v in ipairs(wbFolder:GetDescendants()) do
+        if v:IsA("BasePart") and not v:GetAttribute("Died") then return v end
+    end
+    return nil
+end
 
 -- ════════════════════════════════════════════════════════
 -- SHARED LOGIC
@@ -232,6 +251,19 @@ local function farmLoop()
     while farmActive and alive() do
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
+
+        -- pause farm kalau ada fitur yang prioritynya LEBIH TINGGI (angka lebih kecil) sedang aktif
+        local myPrio = priorities["Mob Farm"] or 3
+        local pausedBy = nil
+        if dungeonActive and (priorities["Dungeon Easy"] or 1) < myPrio then pausedBy = "Dungeon" end
+        if not pausedBy and trialActive   and (priorities["Trial Easy"]   or 2) < myPrio then pausedBy = "Trial" end
+        if not pausedBy and cullingActive  and (priorities["Culling Game"] or 4) < myPrio then pausedBy = "Culling" end
+        if not pausedBy and worldBossActive then
+            local boss = detectWorldBoss()
+            if boss and (priorities["World Boss"] or 5) < myPrio then pausedBy = "World Boss" end
+        end
+        if pausedBy then task.wait(1); continue end
+
         local pool = {}; local w = WORLDS[selectedWorld]
         if w then for i,e in ipairs(w.enemies) do
             if enabledEnemies[i] then table.insert(pool, e) end
@@ -428,9 +460,6 @@ local function gamemodeHasEnemies(folderName)
 end
 
 local function dungeonLoop()
-    -- priority: stop trial kalau lagi jalan
-    if trialActive then trialActive = false end
-
     -- cek apakah dungeon sudah open. kalau belum, tunggu schedule sambil polling
     if not gamemodeHasEnemies("Dungeon Easy") then
         local rem = secsUntilDungeon()
@@ -449,6 +478,26 @@ local function dungeonLoop()
     while dungeonActive and alive() do
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
+
+        -- world boss interrupt: kalau world boss prioritynya lebih tinggi (angka lebih kecil)
+        local myDungPrio = priorities["Dungeon Easy"] or 1
+        local wbPrio     = priorities["World Boss"]   or 5
+        if worldBossActive and wbPrio < myDungPrio then
+            local boss = detectWorldBoss()
+            if boss then
+                leaveGamemode(); task.wait(1)
+                while dungeonActive and alive() do
+                    local b = detectWorldBoss()
+                    if not b or isDead(b) then break end
+                    if not worldBossActive or (priorities["World Boss"] or 5) >= myDungPrio then break end
+                    spamTP(b, function() return dungeonActive and alive() and worldBossActive end)
+                end
+                if dungeonActive and alive() and gamemodeHasEnemies("Dungeon Easy") then
+                    joinGamemode("Dungeon Easy"); task.wait(4)
+                end
+                continue
+            end
+        end
 
         -- tentukan RoomIndex room saat ini (terendah yang ada enemy)
         local currentRI = getLowestRoomIndex("Dungeon Easy")
@@ -515,6 +564,11 @@ local function getCullingWave()
 end
 
 local function cullingLoop()
+    -- set difficulty dulu sebelum join
+    fireBridgeNet({
+        {"General","Parties","SetDifficulty",cullingDifficulty,n=4},"\x02"
+    })
+    task.wait(0.5)
     joinGamemode("Culling Game"); task.wait(4)
     local lastWave = getCullingWave()
     while cullingActive and alive() do
@@ -541,39 +595,73 @@ local function cullingLoop()
 end
 
 local function trialLoop()
-    -- tunggu trial open kalau belum
+    local myPrio = function() return priorities["Trial Easy"] or 2 end
+
+    -- helper: cek apakah ada fitur prioritas lebih tinggi yang aktif saat ini
+    local function trialHigherActive()
+        local p = myPrio()
+        if dungeonActive  and (priorities["Dungeon Easy"] or 1) < p then return true end
+        if worldBossActive and detectWorldBoss() and (priorities["World Boss"] or 5) < p then return true end
+        return false
+    end
+
+    -- tunggu trial open. kalau ada fitur lebih tinggi aktif, yield dulu (jangan matikan trial)
     if not gamemodeHasEnemies("Trial Easy") then
         local rem = secsUntilTrial()
-        local waited = 0
-        local waitTarget = (rem > 5) and (rem - 2) or 0
+        local waited, waitTarget = 0, (rem > 5) and (rem - 2) or 0
         while trialActive and alive() and waited < waitTarget do
             task.wait(1); waited = waited + 1
             if gamemodeHasEnemies("Trial Easy") then break end
-            if dungeonActive then trialActive = false; return end
         end
         if not trialActive or not alive() then return end
     end
+
     joinGamemode("Trial Easy"); task.wait(4)
     local lastWave = getTrialWave()
+
     while trialActive and alive() do
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
-        local tries = 80
+
+        -- cek priority: kalau ada yang lebih tinggi, keluar trial sementara dan tunggu
+        if trialHigherActive() then
+            leaveGamemode(); task.wait(1)
+            while trialActive and alive() and trialHigherActive() do
+                task.wait(1)
+            end
+            if trialActive and alive() and gamemodeHasEnemies("Trial Easy") then
+                joinGamemode("Trial Easy"); task.wait(4)
+                lastWave = getTrialWave()
+            end
+            continue
+        end
+
+        -- bunuh semua enemy di wave sekarang
+        local tries = 100
         while trialActive and alive() and tries > 0 do
-            -- cek priority: dungeon lebih tinggi
-            if dungeonActive then trialActive = false; break end
+            if trialHigherActive() then break end
             local en = findEnemiesInArea("Trial Easy")
             if #en == 0 then break end
             local t = nearestEnemy(en)
-            if t then spamTP(t, function() return trialActive and alive() and not dungeonActive end) end
+            if t then
+                spamTP(t, function()
+                    return trialActive and alive() and not trialHigherActive()
+                end)
+            end
             tries = tries - 1
         end
+
         if not trialActive then leaveGamemode(); break end
         local curWave = getTrialWave()
         if curWave >= trialLeaveWave then trialActive = false; leaveGamemode(); break end
+
+        -- tunggu wave berikutnya: break kalau ada enemy ATAU wave number berubah
+        -- timeout 120 × 0.5s = 60 detik (enemy wave berikutnya bisa spawn agak jauh, beri waktu lebih)
         local waitCycles = 0
-        while trialActive and waitCycles < 60 do
-            if dungeonActive then trialActive = false; break end
+        while trialActive and waitCycles < 120 do
+            if trialHigherActive() then break end
+            local en = findEnemiesInArea("Trial Easy")
+            if #en > 0 then break end  -- enemy wave baru sudah spawn
             local w = getTrialWave()
             if w ~= lastWave then lastWave = w; break end
             task.wait(0.5); waitCycles = waitCycles + 1
@@ -923,7 +1011,7 @@ local PRIO_BTN_H = 32
 local prioCardH  = PRIO_HDR_H + #PRIORITY_FEATURES * PRIO_ROW_H + PRIO_BTN_H + 6
 local prioCard   = makeCard(scrollMain, 0, prioCardH)
 
--- build sorted order list
+-- build sorted order list (sorted by current priority value)
 local prioOrder = {}  -- prioOrder[rank] = featureName
 do
     local temp = {}
@@ -1304,6 +1392,55 @@ N("TextLabel",{Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,12,0,0),
     TextXAlignment=Enum.TextXAlignment.Left, Parent=cullLeaveCard})
 makeNumInput(cullLeaveCard, -50, cullingLeaveRoom, 1, 51, function(v)
     cullingLeaveRoom = v
+end)
+gmy = gmy + ROW_H + PAD + 4
+
+-- WORLD BOSS
+secLabel(scrollGM, gmy, "WORLD BOSS"); gmy = gmy + 18
+
+local wbCard = makeCard(scrollGM, gmy, ROW_H)
+N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1, Text="World Boss Hunt",
+    TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=wbCard})
+local wbPill, wbKnob = makePill(wbCard, -48)
+local wbState = false
+local wbti = TweenInfo.new(0.14, Enum.EasingStyle.Quad)
+N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
+    BackgroundTransparency=1, Text="", Parent=wbCard}
+).MouseButton1Click:Connect(function()
+    wbState       = not wbState
+    worldBossActive = wbState
+    TweenSvc:Create(wbPill, wbti, {BackgroundColor3=wbState and C.tOn or C.tOff}):Play()
+    TweenSvc:Create(wbKnob, wbti, {
+        Position=wbState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
+        BackgroundColor3=wbState and C.kOn or C.kOff,
+    }):Play()
+    if wbState then
+        task.spawn(function()
+            while worldBossActive and alive() do
+                char = lp.Character; if not char then task.wait(1); continue end
+                hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
+                -- pause kalau ada gamemode yang lebih prioritas aktif
+                local wbp = priorities["World Boss"] or 5
+                local higher = (dungeonActive and (priorities["Dungeon Easy"] or 1) < wbp)
+                    or (trialActive   and (priorities["Trial Easy"]   or 2) < wbp)
+                    or (cullingActive  and (priorities["Culling Game"] or 4) < wbp)
+                if higher then task.wait(1); continue end
+                local boss = detectWorldBoss()
+                if boss and not isDead(boss) then
+                    spamTP(boss, function()
+                        return worldBossActive and alive() and not isDead(boss)
+                    end)
+                else
+                    -- boss belum muncul / sudah mati, TP ke world dan tunggu
+                    local w = WORLDS[selectedWorld]
+                    if w then tpWorld(w.name) end
+                    task.wait(3)
+                end
+            end
+        end)
+    end
 end)
 
 -- ════════════════════════════════════════════════════════
