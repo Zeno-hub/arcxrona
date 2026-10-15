@@ -1,6 +1,12 @@
 -- Archeron Hub v2.5 | World Farm + Dungeon/Trial Auto
 -- Horizontal tabs · Rounded cards · BridgeNet TP
 
+-- kill semua loop dari eksekusi sebelumnya
+if _G.__archeronStop then _G.__archeronStop() end
+local _SESSION = {}
+_G.__archeronStop = function() _SESSION = nil end
+local function alive() return _SESSION ~= nil end
+
 local Players  = game:GetService("Players")
 local TweenSvc = game:GetService("TweenService")
 local UIS      = game:GetService("UserInputService")
@@ -86,14 +92,22 @@ local function clearMovers()
     end
 end
 
-local function waitDead(part, timeout)
-    local t = 0
-    while t < (timeout or 15) do
-        if not part or part.Parent == nil then break end
-        if part:GetAttribute("Died") then break end
-        task.wait(0.1); t = t + 0.1
+local function isDead(part)
+    return not part or part.Parent == nil or part:GetAttribute("Died")
+end
+
+-- spam CFrame ke enemy sampai mati
+local function spamTP(part, activeCheck)
+    local timeout = 0
+    while timeout < 20 do
+        if isDead(part) then break end
+        if activeCheck and not activeCheck() then break end
+        clearMovers()
+        if hrp then hrp.CFrame = CFrame.new(part.Position + Vector3.new(0, 3, 0)) end
+        tpFighters()
+        task.wait(0.05); timeout = timeout + 0.05
     end
-    task.wait(0.15)
+    task.wait(0.1)
 end
 
 local function fireBridgeNet(payload)
@@ -136,7 +150,7 @@ end
 
 local function farmLoop()
     local lastTpW = nil
-    while farmActive do
+    while farmActive and alive() do
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
         local pool = {}; local w = WORLDS[selectedWorld]
@@ -147,9 +161,8 @@ local function farmLoop()
         local enemy = pool[math.random(#pool)]
         local part  = findNPC(enemy)
         if part then
-            lastTpW = nil; clearMovers()
-            hrp.CFrame = CFrame.new(part.Position + Vector3.new(0, 3, 0)); tpFighters()
-            task.wait(0.05); waitDead(part, 15)
+            lastTpW = nil
+            spamTP(part, function() return farmActive and alive() end)
         else
             local wn = w and w.name or ""
             if lastTpW ~= wn then tpWorld(wn); lastTpW = wn; task.wait(3.5)
@@ -169,19 +182,75 @@ local cullingLeaveRoom = 10
 local cullingDifficulty = "Easy"
 local CULLING_DIFFS = {"Easy","Medium","Hard"}
 
-local function findEnemiesInArea(folderName)
+-- ── SCHEDULE HELPERS ────────────────────────────────────
+-- Dungeon :00 & :30 WIB | Trial :15 & :45 WIB
+local WIB_OFFSET = 25200  -- UTC+7
+
+local function secsUntilDungeon()
+    local hoursecs = (os.time() + WIB_OFFSET) % 3600
+    local shifted  = hoursecs % 1800
+    return (1800 - shifted) % 1800
+end
+
+local function secsUntilTrial()
+    local hoursecs = (os.time() + WIB_OFFSET) % 3600
+    local shifted  = ((hoursecs - 900) % 3600) % 1800
+    return (1800 - shifted) % 1800
+end
+
+-- filter by RoomIndex (nil = semua enemy)
+local function findEnemiesInRoom(folderName, roomIdx)
     local list = {}
     local ok, folder = pcall(function()
         return workspace.Server.Enemies.Gamemodes[folderName]
     end)
     if not ok or not folder then return list end
-    for _,v in ipairs(folder:GetDescendants()) do
+    for _, v in ipairs(folder:GetDescendants()) do
         if v:IsA("BasePart") and not v:GetAttribute("Died")
         and v:GetAttribute("EnemyName") then
-            table.insert(list, v)
+            if roomIdx == nil then
+                table.insert(list, v)
+            else
+                local ri = v:GetAttribute("RoomIndex")
+                if ri == roomIdx then table.insert(list, v) end
+            end
         end
     end
     return list
+end
+
+-- RoomIndex terendah yang masih ada enemy = room yang harus di-clear sekarang
+local function getLowestRoomIndex(folderName)
+    local ok, folder = pcall(function()
+        return workspace.Server.Enemies.Gamemodes[folderName]
+    end)
+    if not ok or not folder then return nil end
+    local minRI = nil
+    for _, v in ipairs(folder:GetDescendants()) do
+        if v:IsA("BasePart") and not v:GetAttribute("Died")
+        and v:GetAttribute("EnemyName") then
+            local ri = v:GetAttribute("RoomIndex")
+            if ri and (minRI == nil or ri < minRI) then minRI = ri end
+        end
+    end
+    return minRI
+end
+
+-- alias untuk trial/culling yang tidak pakai RoomIndex
+local function findEnemiesInArea(folderName)
+    return findEnemiesInRoom(folderName, nil)
+end
+
+-- cari enemy terdekat dari hrp dalam list
+local function nearestEnemy(list)
+    if #list == 0 then return nil end
+    if not hrp then return list[1] end
+    local best, bestD = nil, math.huge
+    for _, e in ipairs(list) do
+        local d = (e.Position - hrp.Position).Magnitude
+        if d < bestD then bestD = d; best = e end
+    end
+    return best
 end
 
 local function findNearestDoor()
@@ -251,41 +320,68 @@ local function getDungeonRoom()
 end
 
 local function dungeonLoop()
+    -- priority: stop trial kalau lagi jalan
+    if trialActive then trialActive = false end
+
     joinGamemode("Dungeon Easy"); task.wait(4)
     local lastRoom = getDungeonRoom()
-    while dungeonActive do
+
+    while dungeonActive and alive() do
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
-        local tries = 40
-        while dungeonActive and tries > 0 do
-            local en = findEnemiesInArea("Dungeon Easy")
-            if #en == 0 then break end
-            local t = en[math.random(#en)]
-            clearMovers(); hrp.CFrame = CFrame.new(t.Position + Vector3.new(0, 3, 0)); tpFighters()
-            task.wait(0.05); waitDead(t, 15); tries = tries - 1
+
+        -- tentukan RoomIndex room saat ini (terendah yang ada enemy)
+        local currentRI = getLowestRoomIndex("Dungeon Easy")
+
+        if currentRI then
+            -- spam TP ke enemy di room ini satu-satu sampai semua mati
+            local tries = 80
+            while dungeonActive and alive() and tries > 0 do
+                local en = findEnemiesInRoom("Dungeon Easy", currentRI)
+                if #en == 0 then break end  -- room cleared
+                local t = nearestEnemy(en)
+                if t then
+                    spamTP(t, function() return dungeonActive and alive() end)
+                end
+                tries = tries - 1
+            end
+        else
+            -- belum ada enemy (transisi / loading)
+            task.wait(0.4)
         end
+
         if not dungeonActive then break end
-        task.wait(1.5)
+
+        -- cek kondisi keluar
         local curRoom = getDungeonRoom()
-        if curRoom >= dungeonLeaveRoom then dungeonActive = false; leaveGamemode(); break end
-        task.wait(0.4)
+        if curRoom >= dungeonLeaveRoom then
+            dungeonActive = false; leaveGamemode(); break
+        end
+
+        -- cari door terdekat & buka
         local door, doorPP = findNearestDoor()
         if door and doorPP then
-            clearMovers(); hrp.CFrame = CFrame.new(door.Position); tpFighters()
-            task.wait(0.3); pcall(fireproximityprompt, doorPP)
+            clearMovers()
+            if hrp then hrp.CFrame = CFrame.new(door.Position + Vector3.new(0, 2, 0)) end
+            tpFighters()
+            task.wait(0.3)
+            pcall(fireproximityprompt, doorPP)
+            -- tunggu RoomsCleared berubah (room baru terbuka)
             local wc = 0
             while dungeonActive and wc < 20 do
                 local r = getDungeonRoom()
                 if r ~= lastRoom then lastRoom = r; break end
                 task.wait(0.5); wc = wc + 1
             end
-            -- tunggu enemy spawn setelah room baru kebuka
+            -- tunggu enemy pertama muncul di room baru
             local spawnWait = 0
-            while dungeonActive and spawnWait < 10 do
-                if #findEnemiesInArea("Dungeon Easy") > 0 then break end
+            while dungeonActive and spawnWait < 15 do
+                if getLowestRoomIndex("Dungeon Easy") then break end
                 task.wait(0.3); spawnWait = spawnWait + 1
             end
-        else task.wait(1) end
+        else
+            task.wait(1)
+        end
     end
 end
 
@@ -314,19 +410,18 @@ end
 local function cullingLoop()
     joinCullingGame(); task.wait(4)
     local lastWave = getCullingWave()
-    while cullingActive do
+    while cullingActive and alive() do
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
-        local tries = 40
-        while cullingActive and tries > 0 do
+        local tries = 80
+        while cullingActive and alive() and tries > 0 do
             local en = findEnemiesInArea("Culling Game")
             if #en == 0 then break end
-            local t = en[math.random(#en)]
-            clearMovers(); hrp.CFrame = CFrame.new(t.Position + Vector3.new(0, 3, 0)); tpFighters()
-            task.wait(0.05); waitDead(t, 15); tries = tries - 1
+            local t = nearestEnemy(en)
+            if t then spamTP(t, function() return cullingActive and alive() end) end
+            tries = tries - 1
         end
         if not cullingActive then break end
-        task.wait(1.5)
         local curWave = getCullingWave()
         if curWave >= cullingLeaveRoom then cullingActive = false; leaveGamemode(); break end
         local waitCycles = 0
@@ -341,23 +436,25 @@ end
 local function trialLoop()
     joinGamemode("Trial Easy"); task.wait(4)
     local lastWave = getTrialWave()
-    while trialActive do
+    while trialActive and alive() do
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
-        local tries = 40
-        while trialActive and tries > 0 do
+        local tries = 80
+        while trialActive and alive() and tries > 0 do
+            -- cek priority: dungeon lebih tinggi
+            if dungeonActive then trialActive = false; break end
             local en = findEnemiesInArea("Trial Easy")
             if #en == 0 then break end
-            local t = en[math.random(#en)]
-            clearMovers(); hrp.CFrame = CFrame.new(t.Position + Vector3.new(0, 3, 0)); tpFighters()
-            task.wait(0.05); waitDead(t, 15); tries = tries - 1
+            local t = nearestEnemy(en)
+            if t then spamTP(t, function() return trialActive and alive() and not dungeonActive end) end
+            tries = tries - 1
         end
-        if not trialActive then break end
+        if not trialActive then leaveGamemode(); break end
         local curWave = getTrialWave()
         if curWave >= trialLeaveWave then trialActive = false; leaveGamemode(); break end
-        -- wait for CurrentWave to increment
         local waitCycles = 0
         while trialActive and waitCycles < 60 do
+            if dungeonActive then trialActive = false; break end
             local w = getTrialWave()
             if w ~= lastWave then lastWave = w; break end
             task.wait(0.5); waitCycles = waitCycles + 1
@@ -842,7 +939,13 @@ N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
         Position=dungState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
         BackgroundColor3=dungState and C.kOn or C.kOff,
     }):Play()
-    if dungState then task.spawn(dungeonLoop) end
+    if dungState then
+        task.spawn(function()
+            local rem = secsUntilDungeon()
+            if rem > 5 then task.wait(rem - 2) end
+            if dungeonActive and alive() then task.spawn(dungeonLoop) end
+        end)
+    end
 end)
 gmy = gmy + ROW_H + PAD
 
@@ -854,7 +957,17 @@ N("TextLabel",{Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,12,0,0),
 makeNumInput(leaveRoomCard, -50, dungeonLeaveRoom, 1, 51, function(v)
     dungeonLeaveRoom = v
 end)
-gmy = gmy + ROW_H + PAD + 4
+gmy = gmy + ROW_H + PAD
+
+-- countdown dungeon
+local dungCountLabel = N("TextLabel",{
+    Size=UDim2.new(1,-(CARD_M*2),0,14),
+    Position=UDim2.new(0,CARD_M,0,gmy),
+    BackgroundTransparency=1, Text="",
+    TextColor3=C.sub, TextSize=8, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=scrollGM,
+})
+gmy = gmy + 16 + PAD
 
 -- TRIAL EASY
 secLabel(scrollGM, gmy, "TRIAL EASY"); gmy = gmy + 18
@@ -875,7 +988,13 @@ N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
         Position=trialState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
         BackgroundColor3=trialState and C.kOn or C.kOff,
     }):Play()
-    if trialState then task.spawn(trialLoop) end
+    if trialState then
+        task.spawn(function()
+            local rem = secsUntilTrial()
+            if rem > 5 then task.wait(rem - 2) end
+            if trialActive and alive() then task.spawn(trialLoop) end
+        end)
+    end
 end)
 gmy = gmy + ROW_H + PAD
 
@@ -887,7 +1006,17 @@ N("TextLabel",{Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,12,0,0),
 makeNumInput(leaveWaveCard, -50, trialLeaveWave, 1, 51, function(v)
     trialLeaveWave = v
 end)
-gmy = gmy + ROW_H + PAD + 4
+gmy = gmy + ROW_H + PAD
+
+-- countdown trial
+local trialCountLabel = N("TextLabel",{
+    Size=UDim2.new(1,-(CARD_M*2),0,14),
+    Position=UDim2.new(0,CARD_M,0,gmy),
+    BackgroundTransparency=1, Text="",
+    TextColor3=C.sub, TextSize=8, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=scrollGM,
+})
+gmy = gmy + 16 + PAD + 4
 
 -- CULLING GAME
 secLabel(scrollGM, gmy, "CULLING GAME"); gmy = gmy + 18
@@ -978,10 +1107,35 @@ task.spawn(function()
     if ok and url then avatarImg.Image = url end
 end)
 
-N("TextLabel",{Size=UDim2.new(0,200,1,0), Position=UDim2.new(0,48,0,0),
+N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,48,0,0),
     BackgroundTransparency=1, Text=lp.DisplayName,
     TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=botBar})
+
+-- live clock + countdown (bottom-right)
+local clockLabel = N("TextLabel",{
+    Size=UDim2.new(0,160,1,0), Position=UDim2.new(1,-164,0,0),
+    BackgroundTransparency=1, Text="",
+    TextColor3=C.sub, TextSize=8, Font=Enum.Font.GothamBold,
+    TextXAlignment=Enum.TextXAlignment.Right, Parent=botBar,
+})
+task.spawn(function()
+    while alive() do
+        -- jam WIB live
+        local wib = os.time() + WIB_OFFSET
+        local h = math.floor(wib / 3600) % 24
+        local m = math.floor(wib / 60)  % 60
+        local s = wib % 60
+        clockLabel.Text = string.format("%02d:%02d:%02d WIB", h, m, s)
+
+        -- countdown di bawah tiap gamemode
+        local rd = secsUntilDungeon()
+        local rt = secsUntilTrial()
+        dungCountLabel.Text  = string.format("⏱ dungeon open in %dm %02ds", math.floor(rd/60), rd%60)
+        trialCountLabel.Text = string.format("⏱ trial open in %dm %02ds",   math.floor(rt/60), rt%60)
+        task.wait(1)
+    end
+end)
 
 -- ════════════════════════════════════════════════════════
 -- MINIMIZE DOT
