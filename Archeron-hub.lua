@@ -284,23 +284,26 @@ local function findNPC(enemy)
     return #hits > 0 and hits[math.random(#hits)] or nil
 end
 
+-- helper: cek apakah farm harus pause (ada fitur prio lebih tinggi aktif)
+local function farmShouldPause()
+    local p = priorities["Mob Farm"] or 3
+    if dungeonActive  and (priorities["Dungeon Easy"] or 1) < p then return true end
+    if trialActive    and (priorities["Trial Easy"]   or 2) < p then return true end
+    if cullingActive  and (priorities["Culling Game"] or 4) < p then return true end
+    if worldBossActive then
+        local boss = detectWorldBoss()
+        if boss and (priorities["World Boss"] or 5) < p then return true end
+    end
+    return false
+end
+
 local function farmLoop()
     local lastTpW = nil
     while farmActive and alive() do
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
 
-        -- pause farm kalau ada fitur yang prioritynya LEBIH TINGGI (angka lebih kecil) sedang aktif
-        local myPrio = priorities["Mob Farm"] or 3
-        local pausedBy = nil
-        if dungeonActive and (priorities["Dungeon Easy"] or 1) < myPrio then pausedBy = "Dungeon" end
-        if not pausedBy and trialActive   and (priorities["Trial Easy"]   or 2) < myPrio then pausedBy = "Trial" end
-        if not pausedBy and cullingActive  and (priorities["Culling Game"] or 4) < myPrio then pausedBy = "Culling" end
-        if not pausedBy and worldBossActive then
-            local boss = detectWorldBoss()
-            if boss and (priorities["World Boss"] or 5) < myPrio then pausedBy = "World Boss" end
-        end
-        if pausedBy then task.wait(1); continue end
+        if farmShouldPause() then task.wait(1); continue end
 
         local pool = {}; local w = WORLDS[selectedWorld]
         if w then for i,e in ipairs(w.enemies) do
@@ -311,8 +314,10 @@ local function farmLoop()
         local part  = findNPC(enemy)
         if part then
             lastTpW = nil
-            spamTP(part, function() return farmActive and alive() end)
+            -- pass farmShouldPause ke activeCheck: kalau priority berubah mid-TP langsung berhenti
+            spamTP(part, function() return farmActive and alive() and not farmShouldPause() end)
         else
+            if farmShouldPause() then task.wait(1); continue end
             local wn = w and w.name or ""
             if lastTpW ~= wn then tpWorld(wn); lastTpW = wn; task.wait(3.5)
             else task.wait(0.8) end
@@ -498,13 +503,10 @@ local function gamemodeHasEnemies(folderName)
 end
 
 local function dungeonLoop()
-    -- cek apakah dungeon sudah open. kalau belum, tunggu schedule sambil polling
+    -- tunggu dungeon open: poll tiap detik, langsung join begitu ada enemy
     if not gamemodeHasEnemies("Dungeon Easy") then
-        local rem = secsUntilDungeon()
-        local waited = 0
-        local waitTarget = (rem > 5) and (rem - 2) or 0
-        while dungeonActive and alive() and waited < waitTarget do
-            task.wait(1); waited = waited + 1
+        while dungeonActive and alive() do
+            task.wait(1)
             if gamemodeHasEnemies("Dungeon Easy") then break end
         end
         if not dungeonActive or not alive() then return end
@@ -647,12 +649,10 @@ local function trialLoop()
         return false
     end
 
-    -- tunggu trial open. kalau ada fitur lebih tinggi aktif, yield dulu (jangan matikan trial)
+    -- tunggu trial open: poll tiap detik, langsung join begitu ada enemy
     if not gamemodeHasEnemies("Trial Easy") then
-        local rem = secsUntilTrial()
-        local waited, waitTarget = 0, (rem > 5) and (rem - 2) or 0
-        while trialActive and alive() and waited < waitTarget do
-            task.wait(1); waited = waited + 1
+        while trialActive and alive() do
+            task.wait(1)
             if gamemodeHasEnemies("Trial Easy") then break end
         end
         if not trialActive or not alive() then return end
