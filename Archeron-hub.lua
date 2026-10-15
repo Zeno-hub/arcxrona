@@ -415,9 +415,33 @@ local function getDungeonRoom()
     return ok and tonumber(v) or 0
 end
 
+-- cek apakah dungeon/trial sudah open sekarang (ada enemy di folder)
+local function gamemodeHasEnemies(folderName)
+    local ok, f = pcall(function()
+        return workspace.Server.Enemies.Gamemodes[folderName]
+    end)
+    if not ok or not f then return false end
+    for _, v in ipairs(f:GetDescendants()) do
+        if v:IsA("BasePart") and v:GetAttribute("EnemyName") then return true end
+    end
+    return false
+end
+
 local function dungeonLoop()
     -- priority: stop trial kalau lagi jalan
     if trialActive then trialActive = false end
+
+    -- cek apakah dungeon sudah open. kalau belum, tunggu schedule sambil polling
+    if not gamemodeHasEnemies("Dungeon Easy") then
+        local rem = secsUntilDungeon()
+        local waited = 0
+        local waitTarget = (rem > 5) and (rem - 2) or 0
+        while dungeonActive and alive() and waited < waitTarget do
+            task.wait(1); waited = waited + 1
+            if gamemodeHasEnemies("Dungeon Easy") then break end
+        end
+        if not dungeonActive or not alive() then return end
+    end
 
     joinGamemode("Dungeon Easy"); task.wait(4)
     local lastRoom = getDungeonRoom()
@@ -517,6 +541,18 @@ local function cullingLoop()
 end
 
 local function trialLoop()
+    -- tunggu trial open kalau belum
+    if not gamemodeHasEnemies("Trial Easy") then
+        local rem = secsUntilTrial()
+        local waited = 0
+        local waitTarget = (rem > 5) and (rem - 2) or 0
+        while trialActive and alive() and waited < waitTarget do
+            task.wait(1); waited = waited + 1
+            if gamemodeHasEnemies("Trial Easy") then break end
+            if dungeonActive then trialActive = false; return end
+        end
+        if not trialActive or not alive() then return end
+    end
     joinGamemode("Trial Easy"); task.wait(4)
     local lastWave = getTrialWave()
     while trialActive and alive() do
@@ -549,26 +585,26 @@ end
 -- GUI CONSTANTS
 -- ════════════════════════════════════════════════════════
 local C = {
-    bg    = Color3.fromRGB( 7,  4, 18),
-    side  = Color3.fromRGB(10,  6, 24),
-    panel = Color3.fromRGB(13,  9, 30),
-    card  = Color3.fromRGB(16, 11, 36),
-    hdr   = Color3.fromRGB( 9,  6, 22),
-    acc   = Color3.fromRGB(95, 45,205),
-    accHi = Color3.fromRGB(135,75,255),
-    txt   = Color3.fromRGB(210,188,255),
-    sub   = Color3.fromRGB(95, 65,155),
-    tOn   = Color3.fromRGB(75, 28,185),
-    tOff  = Color3.fromRGB(32, 18, 58),
-    kOn   = Color3.fromRGB(185,135,255),
-    kOff  = Color3.fromRGB(110, 65,175),
-    red   = Color3.fromRGB(178, 32, 52),
-    sep   = Color3.fromRGB(45,  22, 90),
-    item  = Color3.fromRGB( 9,  5, 21),
-    bot   = Color3.fromRGB( 8,  5, 20),
-    actS  = Color3.fromRGB(120,60,240),
-    tabAct= Color3.fromRGB(80, 35,180),
-    input = Color3.fromRGB(18, 11, 40),
+    bg    = Color3.fromRGB(14,  8, 32),
+    side  = Color3.fromRGB(18, 10, 40),
+    panel = Color3.fromRGB(20, 13, 45),
+    card  = Color3.fromRGB(24, 16, 52),
+    hdr   = Color3.fromRGB(16, 10, 36),
+    acc   = Color3.fromRGB(105, 50,215),
+    accHi = Color3.fromRGB(150, 90,255),
+    txt   = Color3.fromRGB(220,200,255),
+    sub   = Color3.fromRGB(120, 85,175),
+    tOn   = Color3.fromRGB(85, 35,195),
+    tOff  = Color3.fromRGB(40, 22, 70),
+    kOn   = Color3.fromRGB(195,150,255),
+    kOff  = Color3.fromRGB(120, 75,185),
+    red   = Color3.fromRGB(190, 40, 60),
+    sep   = Color3.fromRGB(60,  30,110),
+    item  = Color3.fromRGB(14,  8, 30),
+    bot   = Color3.fromRGB(12,  7, 28),
+    actS  = Color3.fromRGB(130, 70,245),
+    tabAct= Color3.fromRGB(90, 42,190),
+    input = Color3.fromRGB(26, 16, 55),
 }
 
 -- adaptive width so it fits on any mobile screen
@@ -880,64 +916,131 @@ N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
     if farmState then task.spawn(farmLoop) end
 end)
 
--- ── PRIORITY TABLE ──────────────────────────────────────────
--- compact table: kolom Fitur | kolom Priority (input 1-10)
-local PRIO_ROW_H = 24
-local PRIO_HDR_H = 18
-local prioCardH  = PRIO_HDR_H + #PRIORITY_FEATURES * PRIO_ROW_H + 4
-local prioCard   = makeCard(scrollMain, 0, prioCardH) -- y diset di doMainLayout
+-- ── PRIORITY TABLE (sortable list) ──────────────────────────
+local PRIO_ROW_H = 26
+local PRIO_HDR_H = 20
+local PRIO_BTN_H = 32
+local prioCardH  = PRIO_HDR_H + #PRIORITY_FEATURES * PRIO_ROW_H + PRIO_BTN_H + 6
+local prioCard   = makeCard(scrollMain, 0, prioCardH)
 
--- header row
-local prioHdr = N("Frame",{
-    Size=UDim2.new(1,0,0,PRIO_HDR_H), Position=UDim2.new(0,0,0,0),
-    BackgroundTransparency=1, BorderSizePixel=0, Parent=prioCard,
-})
-N("TextLabel",{Size=UDim2.new(0,56,1,0), Position=UDim2.new(0,10,0,0),
-    BackgroundTransparency=1, Text="PRIORITY",
+-- build sorted order list
+local prioOrder = {}  -- prioOrder[rank] = featureName
+do
+    local temp = {}
+    for _, fn in ipairs(PRIORITY_FEATURES) do
+        table.insert(temp, {name=fn, p=priorities[fn] or 99})
+    end
+    table.sort(temp, function(a,b) return a.p < b.p end)
+    for i,t in ipairs(temp) do prioOrder[i] = t.name end
+end
+local prioSelected = 1  -- row yang dipilih (1-based rank)
+
+-- header
+N("TextLabel",{Size=UDim2.new(1,-8,0,PRIO_HDR_H), Position=UDim2.new(0,10,0,0),
+    BackgroundTransparency=1, Text="PRIORITY  (pilih fitur → ▲ UP / ▼ DOWN)",
     TextColor3=C.sub, TextSize=8, Font=Enum.Font.GothamBold,
-    TextXAlignment=Enum.TextXAlignment.Left, Parent=prioHdr})
-N("TextLabel",{Size=UDim2.new(1,-56,1,0), Position=UDim2.new(0,66,0,0),
-    BackgroundTransparency=1, Text="1 = tertinggi  |  Mob Farm · Dungeon · Trial · Culling · Bounty · Quest",
-    TextColor3=C.sub, TextSize=7, Font=Enum.Font.Gotham,
-    TextXAlignment=Enum.TextXAlignment.Left, Parent=prioHdr})
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=prioCard})
 
-for ri, fname in ipairs(PRIORITY_FEATURES) do
-    local ry = PRIO_HDR_H + (ri-1)*PRIO_ROW_H
-    local row = N("Frame",{
-        Size=UDim2.new(1,0,0,PRIO_ROW_H), Position=UDim2.new(0,0,0,ry),
+-- row frames & labels
+local prioRowFrames = {}
+local prioNumLabels  = {}
+local prioNameLabels = {}
+
+local function prioRefresh()
+    for rank = 1, #prioOrder do
+        local fn = prioOrder[rank]
+        local sel = (rank == prioSelected)
+        local rf = prioRowFrames[rank]
+        if rf then
+            rf.BackgroundColor3 = sel and Color3.fromRGB(60,25,120) or Color3.fromRGB(0,0,0)
+            rf.BackgroundTransparency = sel and 0 or 1
+        end
+        if prioNumLabels[rank] then
+            prioNumLabels[rank].Text      = tostring(rank)
+            prioNumLabels[rank].TextColor3 = sel and C.accHi or C.sub
+        end
+        if prioNameLabels[rank] then
+            prioNameLabels[rank].Text      = prioOrder[rank]
+            prioNameLabels[rank].TextColor3 = sel and C.txt or Color3.fromRGB(160,130,210)
+        end
+    end
+    -- sync priorities table
+    for i, fn in ipairs(prioOrder) do priorities[fn] = i end
+end
+
+for rank = 1, #PRIORITY_FEATURES do
+    local ry = PRIO_HDR_H + (rank-1)*PRIO_ROW_H
+    local rf = N("Frame",{
+        Size=UDim2.new(1,-8,0,PRIO_ROW_H-2), Position=UDim2.new(0,4,0,ry+1),
         BackgroundTransparency=1, BorderSizePixel=0, Parent=prioCard,
     })
-    -- subtle separator except last
-    if ri < #PRIORITY_FEATURES then
-        N("Frame",{Size=UDim2.new(1,-16,0,1), Position=UDim2.new(0,8,1,-1),
-            BackgroundColor3=C.sep, BackgroundTransparency=0.5,
-            BorderSizePixel=0, Parent=row})
+    CR(5, rf)
+    prioRowFrames[rank] = rf
+
+    -- rank badge
+    local badge = N("Frame",{
+        Size=UDim2.new(0,20,0,20), Position=UDim2.new(0,4,0.5,-10),
+        BackgroundColor3=C.hdr, BorderSizePixel=0, Parent=rf,
+    })
+    CR(4, badge)
+    local numLbl = N("TextLabel",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
+        Text=tostring(rank), TextColor3=C.sub,
+        TextSize=9, Font=Enum.Font.GothamBold, Parent=badge})
+    prioNumLabels[rank] = numLbl
+
+    -- name
+    local nameLbl = N("TextLabel",{
+        Size=UDim2.new(1,-34,1,0), Position=UDim2.new(0,30,0,0),
+        BackgroundTransparency=1, Text=PRIORITY_FEATURES[rank],
+        TextColor3=Color3.fromRGB(160,130,210), TextSize=10, Font=Enum.Font.Gotham,
+        TextXAlignment=Enum.TextXAlignment.Left, Parent=rf})
+    prioNameLabels[rank] = nameLbl
+
+    -- separator
+    if rank < #PRIORITY_FEATURES then
+        N("Frame",{Size=UDim2.new(1,-8,0,1), Position=UDim2.new(0,4,1,-1),
+            BackgroundColor3=C.sep, BackgroundTransparency=0.6, BorderSizePixel=0, Parent=rf})
     end
-    N("TextLabel",{Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,10,0,0),
-        BackgroundTransparency=1, Text=fname,
-        TextColor3=C.txt, TextSize=9, Font=Enum.Font.Gotham,
-        TextXAlignment=Enum.TextXAlignment.Left, Parent=row})
-    -- number input box
-    local pbox = N("Frame",{
-        Size=UDim2.new(0,32,0,18), Position=UDim2.new(1,-40,0.5,-9),
-        BackgroundColor3=C.input, BorderSizePixel=0, Parent=row,
-    })
-    CR(5, pbox); ST(C.sep, 0.8, pbox)
-    local ptb = N("TextBox",{
-        Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
-        Text=tostring(priorities[fname] or ri),
-        TextColor3=C.txt, TextSize=9, Font=Enum.Font.GothamBold,
-        ClearTextOnFocus=false, Parent=pbox,
-    })
-    local fn = fname
-    ptb.FocusLost:Connect(function()
-        local v = tonumber(ptb.Text)
-        if not v then v = priorities[fn] or ri end
-        v = math.clamp(math.floor(v), 1, 10)
-        ptb.Text = tostring(v)
-        priorities[fn] = v
+
+    -- click to select
+    local r = rank
+    N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=rf}
+    ).MouseButton1Click:Connect(function()
+        prioSelected = r; prioRefresh()
     end)
 end
+
+-- UP / DOWN buttons
+local btnY = PRIO_HDR_H + #PRIORITY_FEATURES * PRIO_ROW_H + 4
+local upBtn = N("TextButton",{
+    Size=UDim2.new(0.45,0,0,24), Position=UDim2.new(0.05,0,0,btnY),
+    BackgroundColor3=C.acc, Text="▲  UP",
+    TextColor3=Color3.fromRGB(220,200,255), TextSize=10, Font=Enum.Font.GothamBold,
+    BorderSizePixel=0, Parent=prioCard,
+})
+CR(6, upBtn)
+local dnBtn = N("TextButton",{
+    Size=UDim2.new(0.45,0,0,24), Position=UDim2.new(0.5,4,0,btnY),
+    BackgroundColor3=C.hdr, Text="▼  DOWN",
+    TextColor3=Color3.fromRGB(180,150,230), TextSize=10, Font=Enum.Font.GothamBold,
+    BorderSizePixel=0, Parent=prioCard,
+})
+CR(6, dnBtn); ST(C.sep, 0.8, dnBtn)
+
+upBtn.MouseButton1Click:Connect(function()
+    if prioSelected <= 1 then return end
+    prioOrder[prioSelected], prioOrder[prioSelected-1] = prioOrder[prioSelected-1], prioOrder[prioSelected]
+    prioSelected = prioSelected - 1
+    prioRefresh()
+end)
+dnBtn.MouseButton1Click:Connect(function()
+    if prioSelected >= #prioOrder then return end
+    prioOrder[prioSelected], prioOrder[prioSelected+1] = prioOrder[prioSelected+1], prioOrder[prioSelected]
+    prioSelected = prioSelected + 1
+    prioRefresh()
+end)
+
+prioRefresh()
 
 -- Layout engine
 doMainLayout = function()
@@ -962,7 +1065,7 @@ doMainLayout = function()
         enemyItemsCard.Visible = false
         y = y + PAD
     end
-    farmCard.Position  = UDim2.new(0,CARD_M,0,y); y = y + ROW_H + PAD
+    farmCard.Position  = UDim2.new(0,CARD_M,0,y); y = y + ROW_H + PAD + 8
     prioCard.Position  = UDim2.new(0,CARD_M,0,y)
 end
 
@@ -1082,13 +1185,7 @@ N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
         Position=dungState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
         BackgroundColor3=dungState and C.kOn or C.kOff,
     }):Play()
-    if dungState then
-        task.spawn(function()
-            local rem = secsUntilDungeon()
-            if rem > 5 then task.wait(rem - 2) end
-            if dungeonActive and alive() then task.spawn(dungeonLoop) end
-        end)
-    end
+    if dungState then task.spawn(dungeonLoop) end
 end)
 gmy = gmy + ROW_H + PAD
 
@@ -1131,13 +1228,7 @@ N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
         Position=trialState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
         BackgroundColor3=trialState and C.kOn or C.kOff,
     }):Play()
-    if trialState then
-        task.spawn(function()
-            local rem = secsUntilTrial()
-            if rem > 5 then task.wait(rem - 2) end
-            if trialActive and alive() then task.spawn(trialLoop) end
-        end)
-    end
+    if trialState then task.spawn(trialLoop) end
 end)
 gmy = gmy + ROW_H + PAD
 
@@ -1257,9 +1348,9 @@ N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,48,0,0),
 
 -- live clock + countdown (bottom-right)
 local clockLabel = N("TextLabel",{
-    Size=UDim2.new(0,160,1,0), Position=UDim2.new(1,-164,0,0),
+    Size=UDim2.new(0,170,1,0), Position=UDim2.new(1,-174,0,0),
     BackgroundTransparency=1, Text="",
-    TextColor3=C.sub, TextSize=8, Font=Enum.Font.GothamBold,
+    TextColor3=Color3.fromRGB(170,130,255), TextSize=11, Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Right, Parent=botBar,
 })
 task.spawn(function()
