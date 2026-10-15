@@ -147,20 +147,58 @@ local priorities = {
 
 -- ── WORLD BOSS ───────────────────────────────────────────────
 local worldBossActive = false
+local wbList = {}      -- {name="Demon Melyode", world="Sins Kingdom"}
+local selectedBoss = 1
+local wbListOpen = false
+local wbItemFrames = {}
 
--- scan workspace.Server.WorldBosses[worldName] untuk boss aktif
-local function detectWorldBoss()
-    local w = WORLDS[selectedWorld]
-    if not w then return nil end
-    local ok, wbFolder = pcall(function()
-        return workspace.Server.WorldBosses[w.name]
+local function scanWorldBosses()
+    local ok, wbRoot = pcall(function()
+        return workspace:WaitForChild("Server",3):WaitForChild("WorldBosses",3)
     end)
-    if not ok or not wbFolder then return nil end
-    -- folder ada isinya = boss spawned; cari BasePart pertama sebagai target TP
-    for _, v in ipairs(wbFolder:GetDescendants()) do
+    wbList = {}
+    if not ok or not wbRoot then return end
+    for _, wf in ipairs(wbRoot:GetChildren()) do
+        for _, bf in ipairs(wf:GetChildren()) do
+            table.insert(wbList, {name=bf.Name, world=wf.Name})
+        end
+    end
+end
+task.spawn(scanWorldBosses)
+
+local function detectWorldBoss()
+    local wb = wbList[selectedBoss]
+    if not wb then return nil end
+    local ok, bossF = pcall(function()
+        return workspace.Server.WorldBosses[wb.world][wb.name]
+    end)
+    if not ok or not bossF then return nil end
+    for _, v in ipairs(bossF:GetDescendants()) do
         if v:IsA("BasePart") and not v:GetAttribute("Died") then return v end
     end
     return nil
+end
+
+local function worldBossLoop()
+    while worldBossActive and alive() do
+        char = lp.Character; if not char then task.wait(1); continue end
+        hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
+        local wbp = priorities["World Boss"] or 5
+        local higher = (dungeonActive and (priorities["Dungeon Easy"] or 1) < wbp)
+            or (trialActive   and (priorities["Trial Easy"]   or 2) < wbp)
+            or (cullingActive  and (priorities["Culling Game"] or 4) < wbp)
+        if higher then task.wait(1); continue end
+        local boss = detectWorldBoss()
+        if boss and not isDead(boss) then
+            spamTP(boss, function()
+                return worldBossActive and alive() and not isDead(boss)
+            end)
+        else
+            local wb = wbList[selectedBoss]
+            if wb then tpWorld(wb.world) end
+            task.wait(3)
+        end
+    end
 end
 
 -- ════════════════════════════════════════════════════════
@@ -564,12 +602,13 @@ local function getCullingWave()
 end
 
 local function cullingLoop()
-    -- set difficulty dulu sebelum join
-    fireBridgeNet({
-        {"General","Parties","SetDifficulty",cullingDifficulty,n=4},"\x02"
-    })
+    -- buat party → set difficulty → start
+    fireBridgeNet({{"General","Parties","Create","Culling Game",n=4},"\x02"})
+    task.wait(1)
+    fireBridgeNet({{"General","Parties","SetDifficulty",cullingDifficulty,n=4},"\x02"})
     task.wait(0.5)
-    joinGamemode("Culling Game"); task.wait(4)
+    fireBridgeNet({{"General","Parties","Start",n=3},"\x02"})
+    task.wait(5)
     local lastWave = getCullingWave()
     while cullingActive and alive() do
         char = lp.Character; if not char then task.wait(1); continue end
@@ -587,8 +626,11 @@ local function cullingLoop()
         if curWave >= cullingLeaveRoom then cullingActive = false; leaveGamemode(); break end
         local waitCycles = 0
         while cullingActive and waitCycles < 60 do
-            local w = getCullingWave()
-            if w ~= lastWave then lastWave = w; break end
+            local cw = getCullingWave()
+            if cw >= cullingLeaveRoom then cullingActive = false; leaveGamemode(); break end
+            local en = findEnemiesInArea("Culling Game")
+            if #en > 0 then break end
+            if cw ~= lastWave then lastWave = cw; break end
             task.wait(0.5); waitCycles = waitCycles + 1
         end
     end
@@ -660,10 +702,11 @@ local function trialLoop()
         local waitCycles = 0
         while trialActive and waitCycles < 120 do
             if trialHigherActive() then break end
+            local cw = getTrialWave()
+            if cw >= trialLeaveWave then trialActive = false; leaveGamemode(); break end
             local en = findEnemiesInArea("Trial Easy")
             if #en > 0 then break end  -- enemy wave baru sudah spawn
-            local w = getTrialWave()
-            if w ~= lastWave then lastWave = w; break end
+            if cw ~= lastWave then lastWave = cw; break end
             task.wait(0.5); waitCycles = waitCycles + 1
         end
     end
@@ -1004,6 +1047,105 @@ N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
     if farmState then task.spawn(farmLoop) end
 end)
 
+-- ── WORLD BOSS (Main tab) ────────────────────────────────────
+local wbCard = makeCard(scrollMain, 0, ROW_H)
+local wbVal = N("TextLabel",{Size=UDim2.new(1,-100,1,0), Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1, Text="— select boss —",
+    TextColor3=C.sub, TextSize=10, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=wbCard})
+local wbPill, wbKnob = makePill(wbCard, -48)
+local wbState = false
+local wbArrow = N("TextLabel",{Size=UDim2.new(0,16,1,0), Position=UDim2.new(1,-64,0,0),
+    BackgroundTransparency=1, Text="►",
+    TextColor3=C.sub, TextSize=9, Font=Enum.Font.GothamBold, Parent=wbCard})
+-- label kecil "World Boss"
+N("TextLabel",{Size=UDim2.new(0,72,0,12), Position=UDim2.new(0,12,0,2),
+    BackgroundTransparency=1, Text="WORLD BOSS",
+    TextColor3=C.sub, TextSize=7, Font=Enum.Font.GothamBold,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=wbCard})
+-- geser wbVal ke bawah label kecil
+wbVal.Position = UDim2.new(0,12,0,13)
+wbVal.Size     = UDim2.new(1,-100,0,16)
+
+local wbti = TweenInfo.new(0.14, Enum.EasingStyle.Quad)
+-- dropdown open toggle
+N("TextButton",{Size=UDim2.new(1,-52,1,0), BackgroundTransparency=1, Text="", Parent=wbCard}
+).MouseButton1Click:Connect(function()
+    wbListOpen = not wbListOpen
+    wbArrow.Text = wbListOpen and "▾" or "►"
+    doMainLayout()
+end)
+-- on/off toggle
+N("TextButton",{Size=UDim2.new(0,52,1,0), Position=UDim2.new(1,-52,0,0),
+    BackgroundTransparency=1, Text="", Parent=wbCard}
+).MouseButton1Click:Connect(function()
+    wbState = not wbState
+    worldBossActive = wbState
+    TweenSvc:Create(wbPill, wbti, {BackgroundColor3=wbState and C.tOn or C.tOff}):Play()
+    TweenSvc:Create(wbKnob, wbti, {
+        Position=wbState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
+        BackgroundColor3=wbState and C.kOn or C.kOff,
+    }):Play()
+    if wbState then task.spawn(worldBossLoop) end
+end)
+
+-- dropdown list card
+local wbItemsCard = N("Frame",{
+    Size=UDim2.new(1,-(CARD_M*2),0,0),
+    Position=UDim2.new(0,CARD_M,0,0),
+    BackgroundColor3=C.card, BorderSizePixel=0, Visible=false, Parent=scrollMain,
+})
+CR(CARD_R, wbItemsCard); ST(C.sep, 0.8, wbItemsCard)
+
+local function buildWbList()
+    for _,c in ipairs(wbItemsCard:GetChildren()) do c:Destroy() end
+    wbItemFrames = {}
+    if #wbList == 0 then
+        local ph = N("Frame",{Size=UDim2.new(1,0,0,ITEM_H), Position=UDim2.new(0,0,0,0),
+            BackgroundTransparency=1, BorderSizePixel=0, Parent=wbItemsCard})
+        N("TextLabel",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
+            Text="No boss found", TextColor3=C.sub, TextSize=9,
+            Font=Enum.Font.Gotham, Parent=ph})
+        wbItemsCard.Size = UDim2.new(1,-(CARD_M*2),0,ITEM_H)
+        return
+    end
+    for i, wb in ipairs(wbList) do
+        local item = N("Frame",{
+            Size=UDim2.new(1,0,0,ITEM_H), Position=UDim2.new(0,0,0,(i-1)*ITEM_H),
+            BackgroundTransparency=1, BorderSizePixel=0, Parent=wbItemsCard})
+        local strip = N("Frame",{Size=UDim2.new(0,2,0,14), Position=UDim2.new(0,8,0.5,-7),
+            BackgroundColor3=i==selectedBoss and C.actS or C.sep, BorderSizePixel=0, Parent=item})
+        CR(1, strip)
+        local lbl = N("TextLabel",{Size=UDim2.new(1,-22,1,0), Position=UDim2.new(0,18,0,0),
+            BackgroundTransparency=1, Text=wb.name.." - "..wb.world,
+            TextColor3=i==selectedBoss and C.txt or C.sub,
+            TextSize=10, Font=Enum.Font.Gotham,
+            TextXAlignment=Enum.TextXAlignment.Left, Parent=item})
+        wbItemFrames[i] = {frame=item, label=lbl, strip=strip}
+        local idx = i
+        N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=item}
+        ).MouseButton1Click:Connect(function()
+            local old = wbItemFrames[selectedBoss]
+            if old then old.label.TextColor3=C.sub; old.strip.BackgroundColor3=C.sep end
+            selectedBoss = idx
+            lbl.TextColor3 = C.txt; strip.BackgroundColor3 = C.actS
+            wbVal.Text = wb.name.." - "..wb.world
+            wbListOpen = false; wbArrow.Text = "►"
+            doMainLayout()
+        end)
+    end
+    wbItemsCard.Size = UDim2.new(1,-(CARD_M*2),0,#wbList*ITEM_H)
+end
+
+-- rescan + rebuild saat pertama kali wbItemsCard dibuka
+task.spawn(function()
+    task.wait(5)  -- tunggu scanWorldBosses selesai
+    if #wbList > 0 then
+        local wb = wbList[selectedBoss]
+        if wb then wbVal.Text = wb.name.." - "..wb.world end
+    end
+end)
+
 -- ── PRIORITY TABLE (sortable list) ──────────────────────────
 local PRIO_ROW_H = 26
 local PRIO_HDR_H = 20
@@ -1153,8 +1295,20 @@ doMainLayout = function()
         enemyItemsCard.Visible = false
         y = y + PAD
     end
-    farmCard.Position  = UDim2.new(0,CARD_M,0,y); y = y + ROW_H + PAD + 8
-    prioCard.Position  = UDim2.new(0,CARD_M,0,y)
+    farmCard.Position = UDim2.new(0,CARD_M,0,y); y = y + ROW_H + PAD + 4
+    -- World Boss dropdown
+    wbCard.Position = UDim2.new(0,CARD_M,0,y); y = y + ROW_H + 2
+    if wbListOpen then
+        buildWbList()
+        local h = wbItemsCard.Size.Y.Offset
+        wbItemsCard.Visible  = true
+        wbItemsCard.Position = UDim2.new(0,CARD_M,0,y)
+        y = y + h + PAD
+    else
+        wbItemsCard.Visible = false
+        y = y + PAD
+    end
+    prioCard.Position = UDim2.new(0,CARD_M,0,y + 4)
 end
 
 buildEnemyList = function()
@@ -1387,61 +1541,13 @@ gmy = gmy + ROW_H + PAD
 
 local cullLeaveCard = makeCard(scrollGM, gmy, ROW_H)
 N("TextLabel",{Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,12,0,0),
-    BackgroundTransparency=1, Text="Auto leave at room",
+    BackgroundTransparency=1, Text="Auto leave at wave",
     TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=cullLeaveCard})
 makeNumInput(cullLeaveCard, -50, cullingLeaveRoom, 1, 51, function(v)
     cullingLeaveRoom = v
 end)
 gmy = gmy + ROW_H + PAD + 4
-
--- WORLD BOSS
-secLabel(scrollGM, gmy, "WORLD BOSS"); gmy = gmy + 18
-
-local wbCard = makeCard(scrollGM, gmy, ROW_H)
-N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,12,0,0),
-    BackgroundTransparency=1, Text="World Boss Hunt",
-    TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
-    TextXAlignment=Enum.TextXAlignment.Left, Parent=wbCard})
-local wbPill, wbKnob = makePill(wbCard, -48)
-local wbState = false
-local wbti = TweenInfo.new(0.14, Enum.EasingStyle.Quad)
-N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
-    BackgroundTransparency=1, Text="", Parent=wbCard}
-).MouseButton1Click:Connect(function()
-    wbState       = not wbState
-    worldBossActive = wbState
-    TweenSvc:Create(wbPill, wbti, {BackgroundColor3=wbState and C.tOn or C.tOff}):Play()
-    TweenSvc:Create(wbKnob, wbti, {
-        Position=wbState and UDim2.new(0,22,0.5,-8) or UDim2.new(0,2,0.5,-8),
-        BackgroundColor3=wbState and C.kOn or C.kOff,
-    }):Play()
-    if wbState then
-        task.spawn(function()
-            while worldBossActive and alive() do
-                char = lp.Character; if not char then task.wait(1); continue end
-                hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
-                -- pause kalau ada gamemode yang lebih prioritas aktif
-                local wbp = priorities["World Boss"] or 5
-                local higher = (dungeonActive and (priorities["Dungeon Easy"] or 1) < wbp)
-                    or (trialActive   and (priorities["Trial Easy"]   or 2) < wbp)
-                    or (cullingActive  and (priorities["Culling Game"] or 4) < wbp)
-                if higher then task.wait(1); continue end
-                local boss = detectWorldBoss()
-                if boss and not isDead(boss) then
-                    spamTP(boss, function()
-                        return worldBossActive and alive() and not isDead(boss)
-                    end)
-                else
-                    -- boss belum muncul / sudah mati, TP ke world dan tunggu
-                    local w = WORLDS[selectedWorld]
-                    if w then tpWorld(w.name) end
-                    task.wait(3)
-                end
-            end
-        end)
-    end
-end)
 
 -- ════════════════════════════════════════════════════════
 -- TAB 3: SETTINGS
