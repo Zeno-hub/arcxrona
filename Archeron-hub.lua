@@ -285,13 +285,12 @@ local function findNPC(enemy)
 end
 
 -- helper: cek apakah farm harus pause (NPC kill berhenti)
--- dungeon/trial: pakai *Running (gamemode ada waiting phase panjang, farm boleh jalan dulu)
--- culling: pakai *Active OR *Running — culling langsung mulai tanpa waiting phase,
---          jadi begitu toggle ON farm harus pause supaya tidak ganggu culling
+-- semua gamemode pakai *Active OR *Running — begitu toggle ON farm langsung pause,
+-- tidak ada "waiting phase gap" yang bisa bikin farm interferensi saat join
 local function farmShouldPause()
     local p = priorities["Mob Farm"] or 3
-    if dungeonRunning and (priorities["Dungeon Easy"] or 1) < p then return true end
-    if trialRunning   and (priorities["Trial Easy"]   or 2) < p then return true end
+    if (dungeonActive or dungeonRunning) and (priorities["Dungeon Easy"] or 1) < p then return true end
+    if (trialActive   or trialRunning)   and (priorities["Trial Easy"]   or 2) < p then return true end
     if (cullingActive or cullingRunning) and (priorities["Culling Game"] or 4) < p then return true end
     if worldBossActive then
         local boss = detectWorldBoss()
