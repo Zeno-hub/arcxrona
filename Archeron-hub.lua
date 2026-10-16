@@ -525,14 +525,13 @@ local function gamemodeHasEnemies(folderName)
 end
 
 local function dungeonLoop()
+  while dungeonActive and alive() do
     -- tunggu dungeon open: poll tiap detik, langsung join begitu ada enemy
-    if not gamemodeHasEnemies("Dungeon Easy") then
-        while dungeonActive and alive() do
-            task.wait(1)
-            if gamemodeHasEnemies("Dungeon Easy") then break end
-        end
-        if not dungeonActive or not alive() then return end
+    while dungeonActive and alive() do
+        if gamemodeHasEnemies("Dungeon Easy") then break end
+        task.wait(1)
     end
+    if not dungeonActive or not alive() then return end
 
     joinGamemode("Dungeon Easy"); task.wait(4)
     dungeonRunning = true
@@ -589,7 +588,7 @@ local function dungeonLoop()
         -- cek kondisi keluar
         local curRoom = getDungeonRoom()
         if curRoom >= dungeonLeaveRoom then
-            dungeonActive = false; leaveGamemode(); break
+            leaveGamemode(); break  -- toggle tetap ON, outer loop tunggu dungeon berikutnya
         end
 
         -- cari door terdekat & buka
@@ -618,6 +617,8 @@ local function dungeonLoop()
         end
     end
     dungeonRunning = false
+    task.wait(3)  -- jeda sebelum nunggu dungeon berikutnya
+  end
 end
 
 local function getCullingWave()
@@ -630,15 +631,16 @@ local function getCullingWave()
 end
 
 local function cullingLoop()
+  local function cullShouldWait()
+      local p = priorities["Culling Game"] or 4
+      if dungeonRunning and (priorities["Dungeon Easy"] or 1) < p then return true end
+      if trialRunning   and (priorities["Trial Easy"]   or 2) < p then return true end
+      if farmActive     and (priorities["Mob Farm"]     or 3) < p then return true end
+      if worldBossActive and detectWorldBoss() and (priorities["World Boss"] or 5) < p then return true end
+      return false
+  end
+  while cullingActive and alive() do
     -- tunggu kalau ada fitur prio lebih tinggi yang aktif
-    local function cullShouldWait()
-        local p = priorities["Culling Game"] or 4
-        if dungeonRunning and (priorities["Dungeon Easy"] or 1) < p then return true end
-        if trialRunning   and (priorities["Trial Easy"]   or 2) < p then return true end
-        if farmActive     and (priorities["Mob Farm"]     or 3) < p then return true end
-        if worldBossActive and detectWorldBoss() and (priorities["World Boss"] or 5) < p then return true end
-        return false
-    end
     while cullingActive and alive() and cullShouldWait() do task.wait(1) end
     if not cullingActive or not alive() then return end
 
@@ -664,11 +666,11 @@ local function cullingLoop()
         end
         if not cullingActive then break end
         local curWave = getCullingWave()
-        if curWave >= cullingLeaveRoom then cullingActive = false; leaveGamemode(); break end
+        if curWave >= cullingLeaveRoom then leaveGamemode(); break end  -- toggle tetap ON
         local waitCycles = 0
         while cullingActive and waitCycles < 60 do
             local cw = getCullingWave()
-            if cw >= cullingLeaveRoom then cullingActive = false; leaveGamemode(); break end
+            if cw >= cullingLeaveRoom then leaveGamemode(); break end
             local en = findEnemiesInArea("Culling Game")
             if #en > 0 then break end
             if cw ~= lastWave then lastWave = cw; break end
@@ -676,12 +678,13 @@ local function cullingLoop()
         end
     end
     cullingRunning = false
+    task.wait(3)
+  end
 end
 
 local function trialLoop()
     local myPrio = function() return priorities["Trial Easy"] or 2 end
 
-    -- helper: cek apakah ada fitur prioritas lebih tinggi yang aktif saat ini
     local function trialHigherActive()
         local p = myPrio()
         if dungeonRunning  and (priorities["Dungeon Easy"] or 1) < p then return true end
@@ -689,14 +692,13 @@ local function trialLoop()
         return false
     end
 
+  while trialActive and alive() do
     -- tunggu trial open: poll tiap detik, langsung join begitu ada enemy
-    if not gamemodeHasEnemies("Trial Easy") then
-        while trialActive and alive() do
-            task.wait(1)
-            if gamemodeHasEnemies("Trial Easy") then break end
-        end
-        if not trialActive or not alive() then return end
+    while trialActive and alive() do
+        if gamemodeHasEnemies("Trial Easy") then break end
+        task.wait(1)
     end
+    if not trialActive or not alive() then return end
 
     joinGamemode("Trial Easy"); task.wait(4)
     trialRunning = true
@@ -738,22 +740,23 @@ local function trialLoop()
 
         if not trialActive then leaveGamemode(); break end
         local curWave = getTrialWave()
-        if curWave >= trialLeaveWave then trialActive = false; leaveGamemode(); break end
+        if curWave >= trialLeaveWave then leaveGamemode(); break end  -- toggle tetap ON
 
-        -- tunggu wave berikutnya: break kalau ada enemy ATAU wave number berubah
-        -- timeout 120 × 0.5s = 60 detik (enemy wave berikutnya bisa spawn agak jauh, beri waktu lebih)
+        -- tunggu wave berikutnya
         local waitCycles = 0
         while trialActive and waitCycles < 120 do
             if trialHigherActive() then break end
             local cw = getTrialWave()
-            if cw >= trialLeaveWave then trialActive = false; leaveGamemode(); break end
+            if cw >= trialLeaveWave then leaveGamemode(); break end
             local en = findEnemiesInArea("Trial Easy")
-            if #en > 0 then break end  -- enemy wave baru sudah spawn
+            if #en > 0 then break end
             if cw ~= lastWave then lastWave = cw; break end
             task.wait(0.5); waitCycles = waitCycles + 1
         end
     end
     trialRunning = false
+    task.wait(3)
+  end
 end
 
 -- ════════════════════════════════════════════════════════
