@@ -284,8 +284,8 @@ local function findNPC(enemy)
     return #hits > 0 and hits[math.random(#hits)] or nil
 end
 
--- helper: cek apakah farm harus pause
--- pakai *Running flag (bukan toggle) supaya farm tetap jalan selama gamemode belum beneran aktif
+-- helper: cek apakah farm harus pause (NPC kill berhenti)
+-- pakai *Running flag supaya farm tetap jalan selama gamemode belum beneran join
 local function farmShouldPause()
     local p = priorities["Mob Farm"] or 3
     if dungeonRunning and (priorities["Dungeon Easy"] or 1) < p then return true end
@@ -296,6 +296,21 @@ local function farmShouldPause()
         if boss and (priorities["World Boss"] or 5) < p then return true end
     end
     return false
+end
+
+-- helper: cek apakah farm boleh tpWorld
+-- lebih ketat: blokir tpWorld kalau ada gamemode AKTIF (Active) prioritas lebih tinggi,
+-- supaya farm tidak teleport player keluar saat dungeon/trial/culling sedang loading/waiting
+local function farmCanTpWorld()
+    local p = priorities["Mob Farm"] or 3
+    if dungeonActive  and (priorities["Dungeon Easy"] or 1) < p then return false end
+    if trialActive    and (priorities["Trial Easy"]   or 2) < p then return false end
+    if cullingActive  and (priorities["Culling Game"] or 4) < p then return false end
+    if worldBossActive then
+        local boss = detectWorldBoss()
+        if boss and (priorities["World Boss"] or 5) < p then return false end
+    end
+    return true
 end
 
 local function farmLoop()
@@ -319,6 +334,7 @@ local function farmLoop()
             spamTP(part, function() return farmActive and alive() and not farmShouldPause() end)
         else
             if farmShouldPause() then task.wait(1); continue end
+            if not farmCanTpWorld() then task.wait(1); continue end
             local wn = w and w.name or ""
             if lastTpW ~= wn then tpWorld(wn); lastTpW = wn; task.wait(3.5)
             else task.wait(0.8) end
@@ -531,6 +547,7 @@ local function dungeonLoop()
         if worldBossActive and wbPrio < myDungPrio then
             local boss = detectWorldBoss()
             if boss then
+                dungeonRunning = false
                 leaveGamemode(); task.wait(1)
                 while dungeonActive and alive() do
                     local b = detectWorldBoss()
@@ -540,6 +557,7 @@ local function dungeonLoop()
                 end
                 if dungeonActive and alive() and gamemodeHasEnemies("Dungeon Easy") then
                     joinGamemode("Dungeon Easy"); task.wait(4)
+                    dungeonRunning = true
                 end
                 continue
             end
@@ -689,12 +707,14 @@ local function trialLoop()
 
         -- cek priority: kalau ada yang lebih tinggi, keluar trial sementara dan tunggu
         if trialHigherActive() then
+            trialRunning = false
             leaveGamemode(); task.wait(1)
             while trialActive and alive() and trialHigherActive() do
                 task.wait(1)
             end
             if trialActive and alive() and gamemodeHasEnemies("Trial Easy") then
                 joinGamemode("Trial Easy"); task.wait(4)
+                trialRunning = true
                 lastWave = getTrialWave()
             end
             continue
