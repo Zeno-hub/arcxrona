@@ -184,9 +184,9 @@ local function worldBossLoop()
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
         local wbp = priorities["World Boss"] or 5
-        local higher = (dungeonActive and (priorities["Dungeon Easy"] or 1) < wbp)
-            or (trialActive   and (priorities["Trial Easy"]   or 2) < wbp)
-            or (cullingActive  and (priorities["Culling Game"] or 4) < wbp)
+        local higher = (dungeonRunning and (priorities["Dungeon Easy"] or 1) < wbp)
+            or (trialRunning   and (priorities["Trial Easy"]   or 2) < wbp)
+            or ((cullingActive or cullingRunning) and (priorities["Culling Game"] or 4) < wbp)
         if higher then task.wait(1); continue end
         local boss = detectWorldBoss()
         if boss and not isDead(boss) then
@@ -285,12 +285,14 @@ local function findNPC(enemy)
 end
 
 -- helper: cek apakah farm harus pause (NPC kill berhenti)
--- pakai *Running flag supaya farm tetap jalan selama gamemode belum beneran join
+-- dungeon/trial: pakai *Running (gamemode ada waiting phase panjang, farm boleh jalan dulu)
+-- culling: pakai *Active OR *Running — culling langsung mulai tanpa waiting phase,
+--          jadi begitu toggle ON farm harus pause supaya tidak ganggu culling
 local function farmShouldPause()
     local p = priorities["Mob Farm"] or 3
     if dungeonRunning and (priorities["Dungeon Easy"] or 1) < p then return true end
     if trialRunning   and (priorities["Trial Easy"]   or 2) < p then return true end
-    if cullingRunning and (priorities["Culling Game"] or 4) < p then return true end
+    if (cullingActive or cullingRunning) and (priorities["Culling Game"] or 4) < p then return true end
     if worldBossActive then
         local boss = detectWorldBoss()
         if boss and (priorities["World Boss"] or 5) < p then return true end
@@ -683,7 +685,7 @@ local function trialLoop()
     -- helper: cek apakah ada fitur prioritas lebih tinggi yang aktif saat ini
     local function trialHigherActive()
         local p = myPrio()
-        if dungeonActive  and (priorities["Dungeon Easy"] or 1) < p then return true end
+        if dungeonRunning  and (priorities["Dungeon Easy"] or 1) < p then return true end
         if worldBossActive and detectWorldBoss() and (priorities["World Boss"] or 5) < p then return true end
         return false
     end
