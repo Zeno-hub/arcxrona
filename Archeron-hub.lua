@@ -285,12 +285,13 @@ local function findNPC(enemy)
 end
 
 -- helper: cek apakah farm harus pause (NPC kill berhenti)
--- semua gamemode pakai *Active OR *Running — begitu toggle ON farm langsung pause,
--- tidak ada "waiting phase gap" yang bisa bikin farm interferensi saat join
+-- dungeon/trial: pakai *Running — farm boleh jalan saat waiting phase (bisa 30 menit)
+--   tapi *Running di-set SEBELUM task.wait(4) supaya ga ada gap saat join
+-- culling: pakai *Active OR *Running — culling langsung start, tidak ada waiting phase
 local function farmShouldPause()
     local p = priorities["Mob Farm"] or 3
-    if (dungeonActive or dungeonRunning) and (priorities["Dungeon Easy"] or 1) < p then return true end
-    if (trialActive   or trialRunning)   and (priorities["Trial Easy"]   or 2) < p then return true end
+    if dungeonRunning and (priorities["Dungeon Easy"] or 1) < p then return true end
+    if trialRunning   and (priorities["Trial Easy"]   or 2) < p then return true end
     if (cullingActive or cullingRunning) and (priorities["Culling Game"] or 4) < p then return true end
     if worldBossActive then
         local boss = detectWorldBoss()
@@ -533,8 +534,9 @@ local function dungeonLoop()
     end
     if not dungeonActive or not alive() then return end
 
-    joinGamemode("Dungeon Easy"); task.wait(4)
-    dungeonRunning = true
+    joinGamemode("Dungeon Easy")
+    dungeonRunning = true  -- set sebelum wait supaya farm pause langsung, tanpa 4s gap
+    task.wait(4)
     local lastRoom = getDungeonRoom()
 
     while dungeonActive and alive() do
@@ -556,8 +558,9 @@ local function dungeonLoop()
                     spamTP(b, function() return dungeonActive and alive() and worldBossActive end)
                 end
                 if dungeonActive and alive() and gamemodeHasEnemies("Dungeon Easy") then
-                    joinGamemode("Dungeon Easy"); task.wait(4)
+                    joinGamemode("Dungeon Easy")
                     dungeonRunning = true
+                    task.wait(4)
                 end
                 continue
             end
@@ -700,8 +703,9 @@ local function trialLoop()
     end
     if not trialActive or not alive() then return end
 
-    joinGamemode("Trial Easy"); task.wait(4)
-    trialRunning = true
+    joinGamemode("Trial Easy")
+    trialRunning = true  -- set sebelum wait supaya farm pause langsung
+    task.wait(4)
     local lastWave = getTrialWave()
 
     while trialActive and alive() do
@@ -716,8 +720,9 @@ local function trialLoop()
                 task.wait(1)
             end
             if trialActive and alive() and gamemodeHasEnemies("Trial Easy") then
-                joinGamemode("Trial Easy"); task.wait(4)
+                joinGamemode("Trial Easy")
                 trialRunning = true
+                task.wait(4)
                 lastWave = getTrialWave()
             end
             continue
