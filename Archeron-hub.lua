@@ -284,12 +284,13 @@ local function findNPC(enemy)
     return #hits > 0 and hits[math.random(#hits)] or nil
 end
 
--- helper: cek apakah farm harus pause (ada fitur prio lebih tinggi aktif)
+-- helper: cek apakah farm harus pause
+-- pakai *Running flag (bukan toggle) supaya farm tetap jalan selama gamemode belum beneran aktif
 local function farmShouldPause()
     local p = priorities["Mob Farm"] or 3
-    if dungeonActive  and (priorities["Dungeon Easy"] or 1) < p then return true end
-    if trialActive    and (priorities["Trial Easy"]   or 2) < p then return true end
-    if cullingActive  and (priorities["Culling Game"] or 4) < p then return true end
+    if dungeonRunning and (priorities["Dungeon Easy"] or 1) < p then return true end
+    if trialRunning   and (priorities["Trial Easy"]   or 2) < p then return true end
+    if cullingRunning and (priorities["Culling Game"] or 4) < p then return true end
     if worldBossActive then
         local boss = detectWorldBoss()
         if boss and (priorities["World Boss"] or 5) < p then return true end
@@ -330,6 +331,10 @@ end
 local dungeonActive    = false
 local trialActive      = false
 local cullingActive    = false
+-- "Running" = sudah beneran join gamemode (bukan sekadar toggle ON)
+local dungeonRunning   = false
+local trialRunning     = false
+local cullingRunning   = false
 local dungeonLeaveRoom = 10
 local trialLeaveWave   = 10
 local cullingLeaveRoom = 10
@@ -513,6 +518,7 @@ local function dungeonLoop()
     end
 
     joinGamemode("Dungeon Easy"); task.wait(4)
+    dungeonRunning = true
     local lastRoom = getDungeonRoom()
 
     while dungeonActive and alive() do
@@ -592,6 +598,7 @@ local function dungeonLoop()
             task.wait(1)
         end
     end
+    dungeonRunning = false
 end
 
 local function getCullingWave()
@@ -604,6 +611,18 @@ local function getCullingWave()
 end
 
 local function cullingLoop()
+    -- tunggu kalau ada fitur prio lebih tinggi yang aktif
+    local function cullShouldWait()
+        local p = priorities["Culling Game"] or 4
+        if dungeonRunning and (priorities["Dungeon Easy"] or 1) < p then return true end
+        if trialRunning   and (priorities["Trial Easy"]   or 2) < p then return true end
+        if farmActive     and (priorities["Mob Farm"]     or 3) < p then return true end
+        if worldBossActive and detectWorldBoss() and (priorities["World Boss"] or 5) < p then return true end
+        return false
+    end
+    while cullingActive and alive() and cullShouldWait() do task.wait(1) end
+    if not cullingActive or not alive() then return end
+
     -- buat party → set difficulty → start
     fireBridgeNet({{"General","Parties","Create","Culling Game",n=4},"\x02"})
     task.wait(1)
@@ -611,6 +630,7 @@ local function cullingLoop()
     task.wait(0.5)
     fireBridgeNet({{"General","Parties","Start",n=3},"\x02"})
     task.wait(5)
+    cullingRunning = true
     local lastWave = getCullingWave()
     while cullingActive and alive() do
         char = lp.Character; if not char then task.wait(1); continue end
@@ -636,6 +656,7 @@ local function cullingLoop()
             task.wait(0.5); waitCycles = waitCycles + 1
         end
     end
+    cullingRunning = false
 end
 
 local function trialLoop()
@@ -659,6 +680,7 @@ local function trialLoop()
     end
 
     joinGamemode("Trial Easy"); task.wait(4)
+    trialRunning = true
     local lastWave = getTrialWave()
 
     while trialActive and alive() do
@@ -710,6 +732,7 @@ local function trialLoop()
             task.wait(0.5); waitCycles = waitCycles + 1
         end
     end
+    trialRunning = false
 end
 
 -- ════════════════════════════════════════════════════════
