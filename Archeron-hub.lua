@@ -956,7 +956,7 @@ N("TextLabel",{Size=UDim2.new(0,90,1,0), Position=UDim2.new(0,24,0,0),
     TextColor3=Color3.fromRGB(235,220,255),
     TextSize=13, Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=hdr})
-N("TextLabel",{Size=UDim2.new(0,36,1,0), Position=UDim2.new(0,121,0,0),
+N("TextLabel",{Size=UDim2.new(0,36,1,0), Position=UDim2.new(0,100,0,0),
     BackgroundTransparency=1, Text="HUB",
     TextColor3=C.acc2,
     TextSize=13, Font=Enum.Font.GothamBold,
@@ -983,80 +983,77 @@ local sidebar = N("Frame",{
     Position=UDim2.new(0,0,0,HDR_H),
     BackgroundColor3=C.side, BorderSizePixel=0, Parent=main,
 })
--- right separator line
+CR(10, sidebar)  -- lengkungin sudut bawah-kiri
+-- right separator
 N("Frame",{Size=UDim2.new(0,1,1,0), Position=UDim2.new(1,-1,0,0),
     BackgroundColor3=C.sep, BorderSizePixel=0, Parent=sidebar})
--- top separator line
-N("Frame",{Size=UDim2.new(1,0,0,1), Position=UDim2.new(0,0,0,0),
-    BackgroundColor3=C.sep, BorderSizePixel=0, Parent=sidebar})
+-- cover top-right & top-left rounded artifacts (square cap di atas)
+N("Frame",{Size=UDim2.new(1,0,0,12), Position=UDim2.new(0,0,0,0),
+    BackgroundColor3=C.side, BorderSizePixel=0, Parent=sidebar})
 
--- category data: {label, icon}
-local CATS       = {{"Main","⚡"},{"Mode","⚔"},{"Config","⚙"}}
+-- pill nav data: {label, dot color}
+local CATS       = {
+    {"Main",   Color3.fromRGB(  0,200,175)},   -- teal
+    {"Mode",   Color3.fromRGB( 90,130,255)},   -- blue
+    {"Config", Color3.fromRGB(160, 80,255)},   -- purple
+}
+local PILL_W     = SIDEBAR_W - 14   -- 68px
+local PILL_H     = 24
+local PILL_GAP   = 8
+local PILL_X     = 7
+local PILL_Y0    = 14
 local activeTab  = 1
-local tabPills   = {}   -- sidebar row frames
+local tabPills   = {}
 local tabContents= {}
 local ti05       = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
-local CAT_H      = 58   -- height per category row
-local CAT_PAD    = 8    -- top padding
 
 for i, cat in ipairs(CATS) do
-    local rowY = CAT_PAD + (i-1) * (CAT_H + 4)
-    local row = N("Frame",{
-        Size=UDim2.new(1,0,0,CAT_H),
-        Position=UDim2.new(0,0,0,rowY),
-        BackgroundColor3 = i==1 and C.tabAct or Color3.fromRGB(0,0,0),
-        BackgroundTransparency = i==1 and 0 or 1,
+    local py = PILL_Y0 + (i-1)*(PILL_H + PILL_GAP)
+    local isAct = (i==1)
+    -- pill frame (lonjong/oval)
+    local pill = N("Frame",{
+        Size=UDim2.new(0,PILL_W,0,PILL_H),
+        Position=UDim2.new(0,PILL_X,0,py),
+        BackgroundColor3=isAct and C.tabAct or C.side,
+        BackgroundTransparency=isAct and 0 or 0,
         BorderSizePixel=0, Parent=sidebar,
     })
-    -- active left accent bar
-    local acBar = N("Frame",{
-        Size=UDim2.new(0,3,0,CAT_H-12),
-        Position=UDim2.new(0,0,0.5,-(CAT_H-12)/2),
-        BackgroundColor3=C.acc, BorderSizePixel=0,
-        Visible=(i==1), Parent=row,
+    CR(999, pill)
+    if isAct then ST(C.sep,0.8,pill) end
+    -- dot icon (colored circle, bukan emoji)
+    local dotIcon = N("Frame",{
+        Size=UDim2.new(0,7,0,7), Position=UDim2.new(0,8,0.5,-3.5),
+        BackgroundColor3=isAct and cat[2] or C.sub,
+        BorderSizePixel=0, Parent=pill,
     })
-    CR(2, acBar)
-    -- icon
-    N("TextLabel",{
-        Size=UDim2.new(1,0,0,24), Position=UDim2.new(0,0,0,10),
-        BackgroundTransparency=1, Text=cat[2],
-        TextColor3= i==1 and C.accHi or C.sub,
-        TextSize=16, Font=Enum.Font.GothamBold,
-        TextXAlignment=Enum.TextXAlignment.Center, Parent=row,
-    })
+    CR(999, dotIcon)
     -- label
-    N("TextLabel",{
-        Size=UDim2.new(1,0,0,16), Position=UDim2.new(0,0,0,34),
+    local lbl = N("TextLabel",{
+        Size=UDim2.new(1,-20,1,0), Position=UDim2.new(0,20,0,0),
         BackgroundTransparency=1, Text=cat[1],
-        TextColor3= i==1 and C.txt or C.sub,
+        TextColor3=isAct and C.txt or C.sub,
         TextSize=9, Font=Enum.Font.GothamBold,
-        TextXAlignment=Enum.TextXAlignment.Center, Parent=row,
+        TextXAlignment=Enum.TextXAlignment.Left, Parent=pill,
     })
-    tabPills[i] = row
-    local acRef = acBar
+    tabPills[i] = {pill=pill, dot=dotIcon, lbl=lbl, dotCol=cat[2]}
     local idx = i
-    N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=row}
+    N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,Text="",Parent=pill}
     ).MouseButton1Click:Connect(function()
         if activeTab == idx then return end
         -- deactivate old
-        local oldRow = tabPills[activeTab]
-        TweenSvc:Create(oldRow, ti05, {BackgroundTransparency=1}):Play()
-        for _,ch in ipairs(oldRow:GetChildren()) do
-            if ch:IsA("TextLabel") then TweenSvc:Create(ch,ti05,{TextColor3=C.sub}):Play() end
-            if ch:IsA("Frame") and ch ~= oldRow then ch.Visible=false end
-        end
-        if tabContents[activeTab] then tabContents[activeTab].Visible = false end
+        local old = tabPills[activeTab]
+        TweenSvc:Create(old.pill, ti05, {BackgroundColor3=C.side}):Play()
+        TweenSvc:Create(old.dot,  ti05, {BackgroundColor3=C.sub}):Play()
+        TweenSvc:Create(old.lbl,  ti05, {TextColor3=C.sub}):Play()
+        pcall(function() old.pill:FindFirstChildOfClass("UIStroke"):Destroy() end)
+        if tabContents[activeTab] then tabContents[activeTab].Visible=false end
         -- activate new
         activeTab = idx
-        TweenSvc:Create(row, ti05, {BackgroundColor3=C.tabAct, BackgroundTransparency=0}):Play()
-        for _,ch in ipairs(row:GetChildren()) do
-            if ch:IsA("TextLabel") then
-                local col = ch.TextSize >= 14 and C.accHi or C.txt
-                TweenSvc:Create(ch,ti05,{TextColor3=col}):Play()
-            end
-            if ch:IsA("Frame") then ch.Visible=true end
-        end
-        if tabContents[idx] then tabContents[idx].Visible = true end
+        TweenSvc:Create(pill, ti05, {BackgroundColor3=C.tabAct}):Play()
+        TweenSvc:Create(dotIcon, ti05, {BackgroundColor3=cat[2]}):Play()
+        TweenSvc:Create(lbl,  ti05, {TextColor3=C.txt}):Play()
+        ST(C.sep,0.8,pill)
+        if tabContents[idx] then tabContents[idx].Visible=true end
     end)
 end
 
@@ -1170,9 +1167,6 @@ CR(CARD_R, enemyItemsCard); ST(C.sep, 0.8, enemyItemsCard)
 
 -- Auto Farm card  (declared BEFORE doMainLayout/buildEnemyList are called)
 local farmCard = makeCard(scrollMain, 0, ROW_H)
--- left accent strip
-N("Frame",{Size=UDim2.new(0,3,0,ROW_H-8), Position=UDim2.new(0,0,0.5,-(ROW_H-8)/2),
-    BackgroundColor3=C.acc2, BorderSizePixel=0, Parent=farmCard})
 local farmDot = makeStatusDot(farmCard)
 N("TextLabel",{Size=UDim2.new(0,100,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="Auto Farm",
@@ -1196,8 +1190,6 @@ end)
 
 -- ── WORLD BOSS (Main tab) ────────────────────────────────────
 local wbCard = makeCard(scrollMain, 0, ROW_H)
-N("Frame",{Size=UDim2.new(0,3,0,ROW_H-8), Position=UDim2.new(0,0,0.5,-(ROW_H-8)/2),
-    BackgroundColor3=Color3.fromRGB(220,80,80), BorderSizePixel=0, Parent=wbCard})
 local wbDot = makeStatusDot(wbCard)
 local wbVal = N("TextLabel",{Size=UDim2.new(1,-100,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="— select boss —",
@@ -1562,8 +1554,6 @@ local gmy = PAD
 secLabel(scrollGM, gmy, "DUNGEON EASY"); gmy = gmy + 18
 
 local dungCard = makeCard(scrollGM, gmy, ROW_H)
-N("Frame",{Size=UDim2.new(0,3,0,ROW_H-8), Position=UDim2.new(0,0,0.5,-(ROW_H-8)/2),
-    BackgroundColor3=Color3.fromRGB(80,140,255), BorderSizePixel=0, Parent=dungCard})
 local dungDot = makeStatusDot(dungCard)
 N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="Auto Dungeon Easy",
@@ -1610,8 +1600,6 @@ gmy = gmy + 16 + PAD
 secLabel(scrollGM, gmy, "TRIAL EASY"); gmy = gmy + 18
 
 local trialCard = makeCard(scrollGM, gmy, ROW_H)
-N("Frame",{Size=UDim2.new(0,3,0,ROW_H-8), Position=UDim2.new(0,0,0.5,-(ROW_H-8)/2),
-    BackgroundColor3=Color3.fromRGB(200,120,255), BorderSizePixel=0, Parent=trialCard})
 local trialDot = makeStatusDot(trialCard)
 N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="Auto Trial Easy",
@@ -1657,8 +1645,6 @@ gmy = gmy + 16 + PAD + 4
 secLabel(scrollGM, gmy, "CULLING GAME"); gmy = gmy + 18
 
 local cullCard = makeCard(scrollGM, gmy, ROW_H)
-N("Frame",{Size=UDim2.new(0,3,0,ROW_H-8), Position=UDim2.new(0,0,0.5,-(ROW_H-8)/2),
-    BackgroundColor3=Color3.fromRGB(255,180,60), BorderSizePixel=0, Parent=cullCard})
 local cullDot = makeStatusDot(cullCard)
 N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="Auto Culling Game",
@@ -1730,6 +1716,10 @@ local botBar = N("Frame",{
     Position=UDim2.new(0,0,0,HDR_H+BODY_H),
     BackgroundColor3=C.bot, BorderSizePixel=0, Parent=main,
 })
+CR(10, botBar)  -- lengkungin sudut bawah-kiri dan kanan
+-- cover top radius artifact (atas botBar harusnya lurus, bukan lengkung)
+N("Frame",{Size=UDim2.new(1,0,0,12), Position=UDim2.new(0,0,0,0),
+    BackgroundColor3=C.bot, BorderSizePixel=0, Parent=botBar})
 N("Frame",{Size=UDim2.new(1,0,0,1), Position=UDim2.new(0,0,0,0),
     BackgroundColor3=C.sep, BorderSizePixel=0, Parent=botBar})
 
