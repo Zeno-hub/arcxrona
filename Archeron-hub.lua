@@ -514,6 +514,17 @@ local function getDungeonRoom()
 end
 
 -- cek apakah dungeon/trial sudah open sekarang (ada enemy di folder)
+-- gamemodeIsOpen: folder ada = session aktif = BISA join (walau enemy belum spawn)
+-- dipakai untuk polling "kapan join"
+local function gamemodeIsOpen(folderName)
+    local ok, f = pcall(function()
+        return workspace.Server.Enemies.Gamemodes[folderName]
+    end)
+    return ok and f ~= nil
+end
+
+-- gamemodeHasEnemies: ada enemy di folder = session sedang berjalan dengan musuh
+-- dipakai untuk kill loop (apakah ada yang perlu dibunuh sekarang)
 local function gamemodeHasEnemies(folderName)
     local ok, f = pcall(function()
         return workspace.Server.Enemies.Gamemodes[folderName]
@@ -527,9 +538,9 @@ end
 
 local function dungeonLoop()
   while dungeonActive and alive() do
-    -- tunggu dungeon open: poll tiap detik, langsung join begitu ada enemy
+    -- tunggu dungeon open: cek folder ada (session aktif), bukan nunggu enemy spawn
     while dungeonActive and alive() do
-        if gamemodeHasEnemies("Dungeon Easy") then break end
+        if gamemodeIsOpen("Dungeon Easy") then break end
         task.wait(1)
     end
     if not dungeonActive or not alive() then return end
@@ -557,7 +568,7 @@ local function dungeonLoop()
                     if not worldBossActive or (priorities["World Boss"] or 5) >= myDungPrio then break end
                     spamTP(b, function() return dungeonActive and alive() and worldBossActive end)
                 end
-                if dungeonActive and alive() and gamemodeHasEnemies("Dungeon Easy") then
+                if dungeonActive and alive() and gamemodeIsOpen("Dungeon Easy") then
                     joinGamemode("Dungeon Easy")
                     dungeonRunning = true
                     task.wait(4)
@@ -696,9 +707,9 @@ local function trialLoop()
     end
 
   while trialActive and alive() do
-    -- tunggu trial open: poll tiap detik, langsung join begitu ada enemy
+    -- tunggu trial open: cek folder ada (session aktif), bukan nunggu enemy spawn
     while trialActive and alive() do
-        if gamemodeHasEnemies("Trial Easy") then break end
+        if gamemodeIsOpen("Trial Easy") then break end
         task.wait(1)
     end
     if not trialActive or not alive() then return end
@@ -719,7 +730,7 @@ local function trialLoop()
             while trialActive and alive() and trialHigherActive() do
                 task.wait(1)
             end
-            if trialActive and alive() and gamemodeHasEnemies("Trial Easy") then
+            if trialActive and alive() and gamemodeIsOpen("Trial Easy") then
                 joinGamemode("Trial Easy")
                 trialRunning = true
                 task.wait(4)
