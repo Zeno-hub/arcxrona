@@ -830,16 +830,16 @@ local C = {
 local vp   = workspace.CurrentCamera.ViewportSize
 local GW   = math.min(460, math.floor(vp.X) - 16)
 
-local HDR_H  = 34
-local TBAR_H = 34
-local BOT_H  = 48
-local CONT_H = 200
-local TOTAL_H= HDR_H + TBAR_H + CONT_H + BOT_H  -- 316
-local ROW_H  = 34
-local ITEM_H = 28
-local CARD_M = 6
-local CARD_R = 8
-local PAD    = 4
+local HDR_H    = 38
+local SIDEBAR_W= 82
+local BODY_H   = 236
+local BOT_H    = 42
+local TOTAL_H  = HDR_H + BODY_H + BOT_H  -- 316
+local ROW_H    = 34
+local ITEM_H   = 28
+local CARD_M   = 5
+local CARD_R   = 7
+local PAD      = 4
 
 local function N(cls, props, parent)
     local o = Instance.new(cls)
@@ -940,26 +940,29 @@ CR(10, hdr)
 N("Frame",{Size=UDim2.new(1,0,0,10), Position=UDim2.new(0,0,1,-10),
     BackgroundColor3=C.hdr, BorderSizePixel=0, Parent=hdr})
 
--- accent bar kiri (teal → purple gradient feel via dua strip)
+-- subtle glow line di bawah header
+N("Frame",{Size=UDim2.new(1,0,0,1), Position=UDim2.new(0,0,1,-1),
+    BackgroundColor3=C.acc, BorderSizePixel=0, Parent=hdr})
+-- left: dua accent bar (teal + purple)
 local nb1 = N("Frame",{Size=UDim2.new(0,3,0,20), Position=UDim2.new(0,10,0.5,-10),
     BackgroundColor3=C.acc2, BorderSizePixel=0, Parent=hdr})
 CR(2, nb1)
 local nb2 = N("Frame",{Size=UDim2.new(0,3,0,14), Position=UDim2.new(0,15,0.5,-7),
     BackgroundColor3=C.accHi, BorderSizePixel=0, Parent=hdr})
 CR(2, nb2)
--- "ARCHERON" putih, "HUB" teal
+-- "ARCHERON" putih + "HUB" teal, centered-ish
 N("TextLabel",{Size=UDim2.new(0,90,1,0), Position=UDim2.new(0,24,0,0),
     BackgroundTransparency=1, Text="ARCHERON",
     TextColor3=Color3.fromRGB(235,220,255),
-    TextSize=12, Font=Enum.Font.GothamBold,
+    TextSize=13, Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=hdr})
-N("TextLabel",{Size=UDim2.new(0,40,1,0), Position=UDim2.new(0,116,0,0),
+N("TextLabel",{Size=UDim2.new(0,36,1,0), Position=UDim2.new(0,121,0,0),
     BackgroundTransparency=1, Text="HUB",
     TextColor3=C.acc2,
-    TextSize=12, Font=Enum.Font.GothamBold,
+    TextSize=13, Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=hdr})
 -- badge v2.5
-local vb = N("Frame",{Size=UDim2.new(0,30,0,14), Position=UDim2.new(0,158,0.5,-7),
+local vb = N("Frame",{Size=UDim2.new(0,30,0,15), Position=UDim2.new(0,160,0.5,-7.5),
     BackgroundColor3=C.acc, BackgroundTransparency=0.4, BorderSizePixel=0, Parent=hdr})
 CR(4, vb); ST(C.accHi, 0.6, vb)
 N("TextLabel",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
@@ -974,64 +977,94 @@ local closeBtn = N("TextButton",{
 CR(5, closeBtn)
 makeDrag(hdr, main)
 
--- ── TAB BAR ─────────────────────────────────────────────
-local tabBar = N("Frame",{
-    Size=UDim2.new(1,0,0,TBAR_H), Position=UDim2.new(0,0,0,HDR_H),
+-- ── LEFT SIDEBAR ────────────────────────────────────────
+local sidebar = N("Frame",{
+    Size=UDim2.new(0,SIDEBAR_W,0,BODY_H),
+    Position=UDim2.new(0,0,0,HDR_H),
     BackgroundColor3=C.side, BorderSizePixel=0, Parent=main,
 })
-N("Frame",{Size=UDim2.new(1,0,0,1), Position=UDim2.new(0,0,1,-1),
-    BackgroundColor3=C.sep, BorderSizePixel=0, Parent=tabBar})
+-- right separator line
+N("Frame",{Size=UDim2.new(0,1,1,0), Position=UDim2.new(1,-1,0,0),
+    BackgroundColor3=C.sep, BorderSizePixel=0, Parent=sidebar})
+-- top separator line
+N("Frame",{Size=UDim2.new(1,0,0,1), Position=UDim2.new(0,0,0,0),
+    BackgroundColor3=C.sep, BorderSizePixel=0, Parent=sidebar})
 
-local TABS       = {"⚡ Main","⚔ Mode","⚙ Settings"}
+-- category data: {label, icon}
+local CATS       = {{"Main","⚡"},{"Mode","⚔"},{"Config","⚙"}}
 local activeTab  = 1
-local tabPills   = {}
+local tabPills   = {}   -- sidebar row frames
 local tabContents= {}
-local tabW       = math.floor((GW - 16) / #TABS)
 local ti05       = TweenInfo.new(0.15, Enum.EasingStyle.Quad)
+local CAT_H      = 58   -- height per category row
+local CAT_PAD    = 8    -- top padding
 
-for i, name in ipairs(TABS) do
-    local pill = N("Frame",{
-        Size=UDim2.new(0,tabW-4,0,22),
-        Position=UDim2.new(0, 8+(i-1)*tabW, 0.5,-11),
-        BackgroundColor3 = i==1 and C.tabAct or C.side,
-        BorderSizePixel=0, Parent=tabBar,
+for i, cat in ipairs(CATS) do
+    local rowY = CAT_PAD + (i-1) * (CAT_H + 4)
+    local row = N("Frame",{
+        Size=UDim2.new(1,0,0,CAT_H),
+        Position=UDim2.new(0,0,0,rowY),
+        BackgroundColor3 = i==1 and C.tabAct or Color3.fromRGB(0,0,0),
+        BackgroundTransparency = i==1 and 0 or 1,
+        BorderSizePixel=0, Parent=sidebar,
     })
-    CR(999, pill)
-    if i == 1 then ST(C.accHi, 0.8, pill) end
-    N("TextLabel",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
-        Text=name, TextColor3=i==1 and C.txt or C.sub,
-        TextSize=10, Font=Enum.Font.GothamBold, Parent=pill})
-    tabPills[i] = pill
+    -- active left accent bar
+    local acBar = N("Frame",{
+        Size=UDim2.new(0,3,0,CAT_H-12),
+        Position=UDim2.new(0,0,0.5,-(CAT_H-12)/2),
+        BackgroundColor3=C.acc, BorderSizePixel=0,
+        Visible=(i==1), Parent=row,
+    })
+    CR(2, acBar)
+    -- icon
+    N("TextLabel",{
+        Size=UDim2.new(1,0,0,24), Position=UDim2.new(0,0,0,10),
+        BackgroundTransparency=1, Text=cat[2],
+        TextColor3= i==1 and C.accHi or C.sub,
+        TextSize=16, Font=Enum.Font.GothamBold,
+        TextXAlignment=Enum.TextXAlignment.Center, Parent=row,
+    })
+    -- label
+    N("TextLabel",{
+        Size=UDim2.new(1,0,0,16), Position=UDim2.new(0,0,0,34),
+        BackgroundTransparency=1, Text=cat[1],
+        TextColor3= i==1 and C.txt or C.sub,
+        TextSize=9, Font=Enum.Font.GothamBold,
+        TextXAlignment=Enum.TextXAlignment.Center, Parent=row,
+    })
+    tabPills[i] = row
+    local acRef = acBar
     local idx = i
-    N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=pill}
+    N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=row}
     ).MouseButton1Click:Connect(function()
         if activeTab == idx then return end
-        local oldP = tabPills[activeTab]
-        TweenSvc:Create(oldP, ti05, {BackgroundColor3=C.side}):Play()
-        for _,ch in ipairs(oldP:GetChildren()) do
-            if ch:IsA("TextLabel") then
-                TweenSvc:Create(ch, ti05, {TextColor3=C.sub}):Play()
-            end
+        -- deactivate old
+        local oldRow = tabPills[activeTab]
+        TweenSvc:Create(oldRow, ti05, {BackgroundTransparency=1}):Play()
+        for _,ch in ipairs(oldRow:GetChildren()) do
+            if ch:IsA("TextLabel") then TweenSvc:Create(ch,ti05,{TextColor3=C.sub}):Play() end
+            if ch:IsA("Frame") and ch ~= oldRow then ch.Visible=false end
         end
-        pcall(function() oldP:FindFirstChildOfClass("UIStroke"):Destroy() end)
         if tabContents[activeTab] then tabContents[activeTab].Visible = false end
+        -- activate new
         activeTab = idx
-        TweenSvc:Create(pill, ti05, {BackgroundColor3=C.tabAct}):Play()
-        for _,ch in ipairs(pill:GetChildren()) do
+        TweenSvc:Create(row, ti05, {BackgroundColor3=C.tabAct, BackgroundTransparency=0}):Play()
+        for _,ch in ipairs(row:GetChildren()) do
             if ch:IsA("TextLabel") then
-                TweenSvc:Create(ch, ti05, {TextColor3=C.txt}):Play()
+                local col = ch.TextSize >= 14 and C.accHi or C.txt
+                TweenSvc:Create(ch,ti05,{TextColor3=col}):Play()
             end
+            if ch:IsA("Frame") then ch.Visible=true end
         end
-        ST(C.accHi, 0.8, pill)
         if tabContents[idx] then tabContents[idx].Visible = true end
     end)
 end
 
--- ── SCROLL HELPER ───────────────────────────────────────
+-- ── SCROLL HELPER (right panel) ─────────────────────────
 local function makeScroll(visible)
     return N("ScrollingFrame",{
-        Size=UDim2.new(1,0,0,CONT_H),
-        Position=UDim2.new(0,0,0,HDR_H+TBAR_H),
+        Size=UDim2.new(1,-SIDEBAR_W,0,BODY_H),
+        Position=UDim2.new(0,SIDEBAR_W,0,HDR_H),
         BackgroundColor3=C.panel, BorderSizePixel=0,
         ScrollBarThickness=3, ScrollBarImageColor3=C.acc,
         CanvasSize=UDim2.new(0,0,0,0),
@@ -1694,15 +1727,16 @@ N("TextLabel",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
 -- ════════════════════════════════════════════════════════
 local botBar = N("Frame",{
     Size=UDim2.new(1,0,0,BOT_H),
-    Position=UDim2.new(0,0,0,HDR_H+TBAR_H+CONT_H),
+    Position=UDim2.new(0,0,0,HDR_H+BODY_H),
     BackgroundColor3=C.bot, BorderSizePixel=0, Parent=main,
 })
 N("Frame",{Size=UDim2.new(1,0,0,1), Position=UDim2.new(0,0,0,0),
     BackgroundColor3=C.sep, BorderSizePixel=0, Parent=botBar})
 
-local avatarBg = N("Frame",{Size=UDim2.new(0,32,0,32), Position=UDim2.new(0,10,0.5,-16),
-    BackgroundColor3=C.acc, BackgroundTransparency=0.5, BorderSizePixel=0, Parent=botBar})
-CR(999, avatarBg); ST(C.accHi, 1, avatarBg)
+-- avatar circle
+local avatarBg = N("Frame",{Size=UDim2.new(0,28,0,28), Position=UDim2.new(0,10,0.5,-14),
+    BackgroundColor3=C.acc, BackgroundTransparency=0.4, BorderSizePixel=0, Parent=botBar})
+CR(999, avatarBg); ST(C.accHi, 0.8, avatarBg)
 local avatarImg = N("ImageLabel",{Size=UDim2.new(1,-4,1,-4), Position=UDim2.new(0,2,0,2),
     BackgroundTransparency=1, Image="", Parent=avatarBg})
 CR(999, avatarImg)
@@ -1713,18 +1747,27 @@ task.spawn(function()
     end)
     if ok and url then avatarImg.Image = url end
 end)
-
-N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,48,0,0),
+-- display name
+N("TextLabel",{Size=UDim2.new(0,130,0,14), Position=UDim2.new(0,44,0,7),
     BackgroundTransparency=1, Text=lp.DisplayName,
     TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=botBar})
+-- @username sub
+N("TextLabel",{Size=UDim2.new(0,130,0,11), Position=UDim2.new(0,44,0,21),
+    BackgroundTransparency=1, Text="@"..lp.Name,
+    TextColor3=C.sub, TextSize=8, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=botBar})
 
--- live clock + countdown (bottom-right)
+-- divider line between profile and clock
+N("Frame",{Size=UDim2.new(0,1,0,22), Position=UDim2.new(0.5,0,0.5,-11),
+    BackgroundColor3=C.sep, BorderSizePixel=0, Parent=botBar})
+
+-- live clock (right side)
 local clockLabel = N("TextLabel",{
-    Size=UDim2.new(0,170,1,0), Position=UDim2.new(1,-174,0,0),
+    Size=UDim2.new(0.5,-10,1,0), Position=UDim2.new(0.5,6,0,0),
     BackgroundTransparency=1, Text="",
-    TextColor3=Color3.fromRGB(170,130,255), TextSize=11, Font=Enum.Font.GothamBold,
-    TextXAlignment=Enum.TextXAlignment.Right, Parent=botBar,
+    TextColor3=Color3.fromRGB(170,130,255), TextSize=10, Font=Enum.Font.GothamBold,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=botBar,
 })
 task.spawn(function()
     while alive() do
