@@ -515,15 +515,14 @@ local function getDungeonRoom()
 end
 
 -- cek apakah dungeon/trial sudah open sekarang (ada enemy di folder)
--- gamemodeIsOpen: cek workspace.Server.Teleport[folderName] punya Part "Spawn"
--- folder itu HANYA muncul (atau isinya muncul) saat session aktif dan bisa di-join
-local function gamemodeIsOpen(folderName)
-    local ok, folder = pcall(function()
-        return workspace.Server.Teleport[folderName]
+-- gamemodeIsOpen: cek workspace.Client.Maps[mapName].GamemodeSessions.Global.StateManager.CreatedAt
+-- CreatedAt adalah NumberValue; Value > 0 = session aktif dan bisa di-join
+local function gamemodeIsOpen(mapName)
+    local ok, createdAt = pcall(function()
+        return workspace.Client.Maps[mapName].GamemodeSessions.Global.StateManager.CreatedAt
     end)
-    if not ok or not folder then return false end
-    if folder:FindFirstChild("Spawn") then return true end
-    return folder:FindFirstChildWhichIsA("BasePart") ~= nil
+    if not ok or not createdAt then return false end
+    return createdAt.Value ~= nil and createdAt.Value > 0
 end
 
 -- isBossActive: Sins Kingdom di Teleport punya Spawn = World Boss lagi aktif
