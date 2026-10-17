@@ -188,6 +188,7 @@ local function worldBossLoop()
             or (trialRunning   and (priorities["Trial Easy"]   or 2) < wbp)
             or ((cullingActive or cullingRunning) and (priorities["Culling Game"] or 4) < wbp)
         if higher then task.wait(1); continue end
+        if not isBossActive() then task.wait(2); continue end
         local boss = detectWorldBoss()
         if boss and not isDead(boss) then
             spamTP(boss, function()
@@ -514,13 +515,25 @@ local function getDungeonRoom()
 end
 
 -- cek apakah dungeon/trial sudah open sekarang (ada enemy di folder)
--- gamemodeIsOpen: folder ada = session aktif = BISA join (walau enemy belum spawn)
--- dipakai untuk polling "kapan join"
+-- gamemodeIsOpen: cek workspace.Server.Teleport[folderName] punya Part "Spawn"
+-- folder itu HANYA muncul (atau isinya muncul) saat session aktif dan bisa di-join
 local function gamemodeIsOpen(folderName)
-    local ok, f = pcall(function()
-        return workspace.Server.Enemies.Gamemodes[folderName]
+    local ok, folder = pcall(function()
+        return workspace.Server.Teleport[folderName]
     end)
-    return ok and f ~= nil
+    if not ok or not folder then return false end
+    if folder:FindFirstChild("Spawn") then return true end
+    return folder:FindFirstChildWhichIsA("BasePart") ~= nil
+end
+
+-- isBossActive: Sins Kingdom di Teleport punya Spawn = World Boss lagi aktif
+local function isBossActive()
+    local ok, folder = pcall(function()
+        return workspace.Server.Teleport["Sins Kingdom"]
+    end)
+    if not ok or not folder then return false end
+    return folder:FindFirstChild("Spawn") ~= nil
+        or folder:FindFirstChildWhichIsA("BasePart") ~= nil
 end
 
 -- gamemodeHasEnemies: ada enemy di folder = session sedang berjalan dengan musuh
@@ -538,7 +551,7 @@ end
 
 local function dungeonLoop()
   while dungeonActive and alive() do
-    -- tunggu dungeon open: cek folder ada (session aktif), bukan nunggu enemy spawn
+    -- tunggu dungeon open: Spawn muncul di workspace.Server.Teleport["Dungeon Easy"]
     while dungeonActive and alive() do
         if gamemodeIsOpen("Dungeon Easy") then break end
         task.wait(1)
@@ -547,6 +560,7 @@ local function dungeonLoop()
 
     joinGamemode("Dungeon Easy")
     dungeonRunning = true  -- set sebelum wait supaya farm pause langsung, tanpa 4s gap
+    if dungDot then TweenSvc:Create(dungDot,dti,{BackgroundColor3=C.dotG}):Play() end
     task.wait(4)
     local lastRoom = getDungeonRoom()
 
@@ -561,6 +575,7 @@ local function dungeonLoop()
             local boss = detectWorldBoss()
             if boss then
                 dungeonRunning = false
+                if dungDot then TweenSvc:Create(dungDot,dti,{BackgroundColor3=C.dotY}):Play() end
                 leaveGamemode(); task.wait(1)
                 while dungeonActive and alive() do
                     local b = detectWorldBoss()
@@ -568,9 +583,10 @@ local function dungeonLoop()
                     if not worldBossActive or (priorities["World Boss"] or 5) >= myDungPrio then break end
                     spamTP(b, function() return dungeonActive and alive() and worldBossActive end)
                 end
-                if dungeonActive and alive() and gamemodeIsOpen("Dungeon Easy") then
+                if dungeonActive and alive() and gamemodeHasEnemies("Dungeon Easy") then
                     joinGamemode("Dungeon Easy")
                     dungeonRunning = true
+                    if dungDot then TweenSvc:Create(dungDot,dti,{BackgroundColor3=C.dotG}):Play() end
                     task.wait(4)
                 end
                 continue
@@ -631,6 +647,7 @@ local function dungeonLoop()
         end
     end
     dungeonRunning = false
+    if dungDot then TweenSvc:Create(dungDot,dti,{BackgroundColor3=C.dotY}):Play() end
     task.wait(3)  -- jeda sebelum nunggu dungeon berikutnya
   end
 end
@@ -707,7 +724,7 @@ local function trialLoop()
     end
 
   while trialActive and alive() do
-    -- tunggu trial open: cek folder ada (session aktif), bukan nunggu enemy spawn
+    -- tunggu trial open: Spawn muncul di workspace.Server.Teleport["Trial Easy"]
     while trialActive and alive() do
         if gamemodeIsOpen("Trial Easy") then break end
         task.wait(1)
@@ -716,6 +733,7 @@ local function trialLoop()
 
     joinGamemode("Trial Easy")
     trialRunning = true  -- set sebelum wait supaya farm pause langsung
+    if trialDot then TweenSvc:Create(trialDot,dti,{BackgroundColor3=C.dotG}):Play() end
     task.wait(4)
     local lastWave = getTrialWave()
 
@@ -726,13 +744,15 @@ local function trialLoop()
         -- cek priority: kalau ada yang lebih tinggi, keluar trial sementara dan tunggu
         if trialHigherActive() then
             trialRunning = false
+            if trialDot then TweenSvc:Create(trialDot,dti,{BackgroundColor3=C.dotY}):Play() end
             leaveGamemode(); task.wait(1)
             while trialActive and alive() and trialHigherActive() do
                 task.wait(1)
             end
-            if trialActive and alive() and gamemodeIsOpen("Trial Easy") then
+            if trialActive and alive() and gamemodeHasEnemies("Trial Easy") then
                 joinGamemode("Trial Easy")
                 trialRunning = true
+                if trialDot then TweenSvc:Create(trialDot,dti,{BackgroundColor3=C.dotG}):Play() end
                 task.wait(4)
                 lastWave = getTrialWave()
             end
@@ -771,6 +791,7 @@ local function trialLoop()
         end
     end
     trialRunning = false
+    if trialDot then TweenSvc:Create(trialDot,dti,{BackgroundColor3=C.dotY}):Play() end
     task.wait(3)
   end
 end
@@ -779,26 +800,30 @@ end
 -- GUI CONSTANTS
 -- ════════════════════════════════════════════════════════
 local C = {
-    bg    = Color3.fromRGB(14,  8, 32),
-    side  = Color3.fromRGB(18, 10, 40),
-    panel = Color3.fromRGB(20, 13, 45),
-    card  = Color3.fromRGB(24, 16, 52),
-    hdr   = Color3.fromRGB(16, 10, 36),
-    acc   = Color3.fromRGB(105, 50,215),
-    accHi = Color3.fromRGB(150, 90,255),
-    txt   = Color3.fromRGB(220,200,255),
-    sub   = Color3.fromRGB(120, 85,175),
-    tOn   = Color3.fromRGB(85, 35,195),
-    tOff  = Color3.fromRGB(40, 22, 70),
-    kOn   = Color3.fromRGB(195,150,255),
-    kOff  = Color3.fromRGB(120, 75,185),
-    red   = Color3.fromRGB(190, 40, 60),
-    sep   = Color3.fromRGB(60,  30,110),
-    item  = Color3.fromRGB(14,  8, 30),
-    bot   = Color3.fromRGB(12,  7, 28),
-    actS  = Color3.fromRGB(130, 70,245),
-    tabAct= Color3.fromRGB(90, 42,190),
-    input = Color3.fromRGB(26, 16, 55),
+    bg    = Color3.fromRGB( 9,  7, 20),      -- deep void
+    side  = Color3.fromRGB(13, 10, 30),
+    panel = Color3.fromRGB(15, 11, 34),
+    card  = Color3.fromRGB(19, 14, 42),
+    hdr   = Color3.fromRGB(11,  8, 26),
+    acc   = Color3.fromRGB( 90, 55,215),     -- electric purple
+    accHi = Color3.fromRGB(150,100,255),
+    acc2  = Color3.fromRGB(  0,200,175),     -- teal glow
+    txt   = Color3.fromRGB(230,215,255),
+    sub   = Color3.fromRGB(125, 95,185),
+    tOn   = Color3.fromRGB( 30,185,145),     -- teal ON
+    tOff  = Color3.fromRGB( 38, 22, 68),
+    kOn   = Color3.fromRGB(195,255,240),
+    kOff  = Color3.fromRGB(110, 72,178),
+    red   = Color3.fromRGB(205, 42, 65),
+    sep   = Color3.fromRGB( 52, 28,100),
+    item  = Color3.fromRGB( 11,  7, 26),
+    bot   = Color3.fromRGB(  9,  6, 22),
+    actS  = Color3.fromRGB(115, 65,235),
+    tabAct= Color3.fromRGB( 65, 38,175),
+    input = Color3.fromRGB( 21, 14, 48),
+    dotG  = Color3.fromRGB( 60,220,145),     -- status: running
+    dotY  = Color3.fromRGB(230,175, 40),     -- status: waiting
+    dotD  = Color3.fromRGB( 45, 28, 75),     -- status: off
 }
 
 -- adaptive width so it fits on any mobile screen
@@ -847,6 +872,16 @@ local function makeDrag(handle, target)
         if i.UserInputType == Enum.UserInputType.MouseButton1
         or i.UserInputType == Enum.UserInputType.Touch then drag = false end
     end)
+end
+
+-- status dot: bulat kecil di kiri toggle row; warna berubah live
+local function makeStatusDot(parent)
+    local dot = N("Frame",{
+        Size=UDim2.new(0,8,0,8), Position=UDim2.new(0,6,0.5,-4),
+        BackgroundColor3=C.dotD, BorderSizePixel=0, Parent=parent,
+    })
+    CR(999, dot)
+    return dot
 end
 
 local function makePill(parent, xRight)
@@ -905,19 +940,30 @@ CR(10, hdr)
 N("Frame",{Size=UDim2.new(1,0,0,10), Position=UDim2.new(0,0,1,-10),
     BackgroundColor3=C.hdr, BorderSizePixel=0, Parent=hdr})
 
-local notch = N("Frame",{Size=UDim2.new(0,3,0,18), Position=UDim2.new(0,12,0.5,-9),
+-- accent bar kiri (teal → purple gradient feel via dua strip)
+local nb1 = N("Frame",{Size=UDim2.new(0,3,0,20), Position=UDim2.new(0,10,0.5,-10),
+    BackgroundColor3=C.acc2, BorderSizePixel=0, Parent=hdr})
+CR(2, nb1)
+local nb2 = N("Frame",{Size=UDim2.new(0,3,0,14), Position=UDim2.new(0,15,0.5,-7),
     BackgroundColor3=C.accHi, BorderSizePixel=0, Parent=hdr})
-CR(2, notch)
-N("TextLabel",{Size=UDim2.new(0,170,1,0), Position=UDim2.new(0,22,0,0),
-    BackgroundTransparency=1, Text="ARCHERON  HUB",
-    TextColor3=Color3.fromRGB(160,100,255),
+CR(2, nb2)
+-- "ARCHERON" putih, "HUB" teal
+N("TextLabel",{Size=UDim2.new(0,90,1,0), Position=UDim2.new(0,24,0,0),
+    BackgroundTransparency=1, Text="ARCHERON",
+    TextColor3=Color3.fromRGB(235,220,255),
     TextSize=12, Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=hdr})
-local vb = N("Frame",{Size=UDim2.new(0,32,0,15), Position=UDim2.new(0,196,0.5,-7),
-    BackgroundColor3=C.acc, BackgroundTransparency=0.45, BorderSizePixel=0, Parent=hdr})
-CR(4, vb)
+N("TextLabel",{Size=UDim2.new(0,40,1,0), Position=UDim2.new(0,116,0,0),
+    BackgroundTransparency=1, Text="HUB",
+    TextColor3=C.acc2,
+    TextSize=12, Font=Enum.Font.GothamBold,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=hdr})
+-- badge v2.5
+local vb = N("Frame",{Size=UDim2.new(0,30,0,14), Position=UDim2.new(0,158,0.5,-7),
+    BackgroundColor3=C.acc, BackgroundTransparency=0.4, BorderSizePixel=0, Parent=hdr})
+CR(4, vb); ST(C.accHi, 0.6, vb)
 N("TextLabel",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
-    Text="v2.5", TextColor3=Color3.fromRGB(195,150,255),
+    Text="v2.5", TextColor3=Color3.fromRGB(200,160,255),
     TextSize=8, Font=Enum.Font.GothamBold, Parent=vb})
 
 local closeBtn = N("TextButton",{
@@ -936,7 +982,7 @@ local tabBar = N("Frame",{
 N("Frame",{Size=UDim2.new(1,0,0,1), Position=UDim2.new(0,0,1,-1),
     BackgroundColor3=C.sep, BorderSizePixel=0, Parent=tabBar})
 
-local TABS       = {"Main","Gamemode","Settings"}
+local TABS       = {"⚡ Main","⚔ Mode","⚙ Settings"}
 local activeTab  = 1
 local tabPills   = {}
 local tabContents= {}
@@ -1091,7 +1137,11 @@ CR(CARD_R, enemyItemsCard); ST(C.sep, 0.8, enemyItemsCard)
 
 -- Auto Farm card  (declared BEFORE doMainLayout/buildEnemyList are called)
 local farmCard = makeCard(scrollMain, 0, ROW_H)
-N("TextLabel",{Size=UDim2.new(0,100,1,0), Position=UDim2.new(0,12,0,0),
+-- left accent strip
+N("Frame",{Size=UDim2.new(0,3,0,ROW_H-8), Position=UDim2.new(0,0,0.5,-(ROW_H-8)/2),
+    BackgroundColor3=C.acc2, BorderSizePixel=0, Parent=farmCard})
+local farmDot = makeStatusDot(farmCard)
+N("TextLabel",{Size=UDim2.new(0,100,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="Auto Farm",
     TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=farmCard})
@@ -1108,11 +1158,15 @@ N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
         BackgroundColor3=farmState and C.kOn or C.kOff,
     }):Play()
     if farmState then task.spawn(farmLoop) end
+    TweenSvc:Create(farmDot, fti, {BackgroundColor3=farmState and C.dotY or C.dotD}):Play()
 end)
 
 -- ── WORLD BOSS (Main tab) ────────────────────────────────────
 local wbCard = makeCard(scrollMain, 0, ROW_H)
-local wbVal = N("TextLabel",{Size=UDim2.new(1,-100,1,0), Position=UDim2.new(0,12,0,0),
+N("Frame",{Size=UDim2.new(0,3,0,ROW_H-8), Position=UDim2.new(0,0,0.5,-(ROW_H-8)/2),
+    BackgroundColor3=Color3.fromRGB(220,80,80), BorderSizePixel=0, Parent=wbCard})
+local wbDot = makeStatusDot(wbCard)
+local wbVal = N("TextLabel",{Size=UDim2.new(1,-100,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="— select boss —",
     TextColor3=C.sub, TextSize=10, Font=Enum.Font.Gotham,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=wbCard})
@@ -1122,7 +1176,7 @@ local wbArrow = N("TextLabel",{Size=UDim2.new(0,16,1,0), Position=UDim2.new(1,-6
     BackgroundTransparency=1, Text="►",
     TextColor3=C.sub, TextSize=9, Font=Enum.Font.GothamBold, Parent=wbCard})
 -- label kecil "World Boss"
-N("TextLabel",{Size=UDim2.new(0,72,0,12), Position=UDim2.new(0,12,0,2),
+N("TextLabel",{Size=UDim2.new(0,72,0,12), Position=UDim2.new(0,18,0,2),
     BackgroundTransparency=1, Text="WORLD BOSS",
     TextColor3=C.sub, TextSize=7, Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=wbCard})
@@ -1150,6 +1204,7 @@ N("TextButton",{Size=UDim2.new(0,52,1,0), Position=UDim2.new(1,-52,0,0),
         BackgroundColor3=wbState and C.kOn or C.kOff,
     }):Play()
     if wbState then task.spawn(worldBossLoop) end
+    TweenSvc:Create(wbDot, wbti, {BackgroundColor3=wbState and C.dotY or C.dotD}):Play()
 end)
 
 -- dropdown list card
@@ -1474,7 +1529,10 @@ local gmy = PAD
 secLabel(scrollGM, gmy, "DUNGEON EASY"); gmy = gmy + 18
 
 local dungCard = makeCard(scrollGM, gmy, ROW_H)
-N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,12,0,0),
+N("Frame",{Size=UDim2.new(0,3,0,ROW_H-8), Position=UDim2.new(0,0,0.5,-(ROW_H-8)/2),
+    BackgroundColor3=Color3.fromRGB(80,140,255), BorderSizePixel=0, Parent=dungCard})
+local dungDot = makeStatusDot(dungCard)
+N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="Auto Dungeon Easy",
     TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=dungCard})
@@ -1491,6 +1549,7 @@ N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
         BackgroundColor3=dungState and C.kOn or C.kOff,
     }):Play()
     if dungState then task.spawn(dungeonLoop) end
+    TweenSvc:Create(dungDot, dti, {BackgroundColor3=dungState and C.dotY or C.dotD}):Play()
 end)
 gmy = gmy + ROW_H + PAD
 
@@ -1518,7 +1577,10 @@ gmy = gmy + 16 + PAD
 secLabel(scrollGM, gmy, "TRIAL EASY"); gmy = gmy + 18
 
 local trialCard = makeCard(scrollGM, gmy, ROW_H)
-N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,12,0,0),
+N("Frame",{Size=UDim2.new(0,3,0,ROW_H-8), Position=UDim2.new(0,0,0.5,-(ROW_H-8)/2),
+    BackgroundColor3=Color3.fromRGB(200,120,255), BorderSizePixel=0, Parent=trialCard})
+local trialDot = makeStatusDot(trialCard)
+N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="Auto Trial Easy",
     TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=trialCard})
@@ -1534,6 +1596,7 @@ N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
         BackgroundColor3=trialState and C.kOn or C.kOff,
     }):Play()
     if trialState then task.spawn(trialLoop) end
+    TweenSvc:Create(trialDot, dti, {BackgroundColor3=trialState and C.dotY or C.dotD}):Play()
 end)
 gmy = gmy + ROW_H + PAD
 
@@ -1561,7 +1624,10 @@ gmy = gmy + 16 + PAD + 4
 secLabel(scrollGM, gmy, "CULLING GAME"); gmy = gmy + 18
 
 local cullCard = makeCard(scrollGM, gmy, ROW_H)
-N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,12,0,0),
+N("Frame",{Size=UDim2.new(0,3,0,ROW_H-8), Position=UDim2.new(0,0,0.5,-(ROW_H-8)/2),
+    BackgroundColor3=Color3.fromRGB(255,180,60), BorderSizePixel=0, Parent=cullCard})
+local cullDot = makeStatusDot(cullCard)
+N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="Auto Culling Game",
     TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=cullCard})
@@ -1577,6 +1643,7 @@ N("TextButton",{Size=UDim2.new(0,96,1,0), Position=UDim2.new(1,-100,0,0),
         BackgroundColor3=cullState and C.kOn or C.kOff,
     }):Play()
     if cullState then task.spawn(cullingLoop) end
+    TweenSvc:Create(cullDot, dti, {BackgroundColor3=cullState and C.dotY or C.dotD}):Play()
 end)
 gmy = gmy + ROW_H + PAD
 
