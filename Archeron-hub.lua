@@ -297,13 +297,11 @@ local function findNPC(enemy)
 end
 
 -- helper: cek apakah farm harus pause (NPC kill berhenti)
--- dungeon/trial: pakai *Running — farm boleh jalan saat waiting phase (bisa 30 menit)
---   tapi *Running di-set SEBELUM task.wait(4) supaya ga ada gap saat join
--- culling: pakai *Active OR *Running — culling langsung start, tidak ada waiting phase
+-- cek dungeonActive + dungeonRunning: supaya reliabel meski loop sempat reset *Running
 local function farmShouldPause()
     local p = priorities["Mob Farm"] or 3
-    if dungeonRunning and (priorities["Dungeon Easy"] or 1) < p then return true end
-    if trialRunning   and (priorities["Trial Easy"]   or 2) < p then return true end
+    if (dungeonActive or dungeonRunning) and (priorities["Dungeon Easy"] or 1) < p then return true end
+    if (trialActive   or trialRunning)   and (priorities["Trial Easy"]   or 2) < p then return true end
     if (cullingActive or cullingRunning) and (priorities["Culling Game"] or 4) < p then return true end
     if worldBossActive then
         local boss = detectWorldBoss()
@@ -365,6 +363,9 @@ local cullingActive    = false
 local dungeonRunning   = false
 local trialRunning     = false
 local cullingRunning   = false
+-- loop guards: prevent double-spawn kalau user re-toggle cepat
+local dungLoopLive  = false
+local trialLoopLive = false
 local dungeonLeaveRoom = 10
 local trialLeaveWave   = 10
 local cullingLeaveRoom = 10
@@ -388,12 +389,26 @@ local function secsUntilTrial()
 end
 
 -- filter by RoomIndex (nil = semua enemy)
+-- cari folder enemies gamemode dengan fallback ke beberapa kemungkinan path
+local function getGamemodeEnemyFolder(folderName)
+    local paths = {
+        function() return workspace.Server.Enemies.Gamemodes[folderName] end,
+        function() return workspace.Server.Enemies.Maps[folderName] end,
+        function() return workspace.Server.Gamemodes.Enemies[folderName] end,
+        function() return workspace.Server.GamemodeEnemies[folderName] end,
+        function() return workspace.Server.Enemies[folderName] end,
+    }
+    for _, fn in ipairs(paths) do
+        local ok, folder = pcall(fn)
+        if ok and folder and #folder:GetDescendants() > 0 then return folder end
+    end
+    return nil
+end
+
 local function findEnemiesInRoom(folderName, roomIdx)
     local list = {}
-    local ok, folder = pcall(function()
-        return workspace.Server.Enemies.Gamemodes[folderName]
-    end)
-    if not ok or not folder then return list end
+    local folder = getGamemodeEnemyFolder(folderName)
+    if not folder then return list end
     for _, v in ipairs(folder:GetDescendants()) do
         if v:IsA("BasePart") and not v:GetAttribute("Died")
         and v:GetAttribute("EnemyName") then
@@ -410,10 +425,8 @@ end
 
 -- RoomIndex terendah yang masih ada enemy = room yang harus di-clear sekarang
 local function getLowestRoomIndex(folderName)
-    local ok, folder = pcall(function()
-        return workspace.Server.Enemies.Gamemodes[folderName]
-    end)
-    if not ok or not folder then return nil end
+    local folder = getGamemodeEnemyFolder(folderName)
+    if not folder then return nil end
     local minRI = nil
     for _, v in ipairs(folder:GetDescendants()) do
         if v:IsA("BasePart") and not v:GetAttribute("Died")
@@ -525,19 +538,14 @@ local function getDungeonRoom()
     return ok and tonumber(v) or 0
 end
 
--- cek apakah dungeon/trial sudah open sekarang (ada enemy di folder)
--- baca nilai CreatedAt (timestamp session aktif). 0 = tidak ada session
-local function getCreatedAt(mapName)
-    local ok, v = pcall(function()
-        return workspace.Client.Maps[mapName].GamemodeSessions.Global.StateManager.CreatedAt.Value
-    end)
-    return ok and tonumber(v) or 0
-end
-
--- gamemodeIsOpen: cek workspace.Client.Maps[mapName].GamemodeSessions.Global.StateManager.CreatedAt
--- CreatedAt adalah NumberValue (Unix timestamp); Value > 0 = session sedang aktif
+-- cek apakah dungeon/trial sudah open sekarang
+-- path: workspace.Client.Maps[mapName].StateManager["Part (Start)"]
+-- Part (Start) ada = session aktif; nil/error = belum open
 local function gamemodeIsOpen(mapName)
-    return getCreatedAt(mapName) > 0
+    local ok, v = pcall(function()
+        return workspace.Client.Maps[mapName].StateManager["Part (Start)"]
+    end)
+    return ok and v ~= nil
 end
 
 -- isBossActive: Sins Kingdom di Teleport punya Spawn = World Boss lagi aktif
@@ -564,12 +572,12 @@ local function gamemodeHasEnemies(folderName)
 end
 
 local function dungeonLoop()
+  if dungLoopLive then return end
+  dungLoopLive = true
   while dungeonActive and alive() do
-    -- snapshot CreatedAt sebelum nunggu: detect session BARU (bukan sisa session lama)
-    local prevCA = getCreatedAt("Dungeon Easy")
+    -- tunggu sampai session terbuka (Part (Start) muncul)
     while dungeonActive and alive() do
-        local cur = getCreatedAt("Dungeon Easy")
-        if cur > 0 and cur ~= prevCA then break end  -- session baru terbuka
+        if gamemodeIsOpen("Dungeon Easy") then break end
         task.wait(1)
     end
     if not dungeonActive or not alive() then return end
@@ -609,15 +617,20 @@ local function dungeonLoop()
             end
         end
 
-        -- tentukan RoomIndex room saat ini (terendah yang ada enemy)
+        -- cari enemy: coba filter RoomIndex dulu, kalau ga ada pakai semua enemy
         local currentRI = getLowestRoomIndex("Dungeon Easy")
+        local en0 = currentRI
+            and findEnemiesInRoom("Dungeon Easy", currentRI)
+            or  findEnemiesInArea("Dungeon Easy")  -- fallback: semua enemy di folder
 
-        if currentRI then
-            -- spam TP ke enemy di room ini satu-satu sampai semua mati
+        if #en0 > 0 then
+            -- kill enemy satu-satu sampai semua di area ini mati
             local tries = 80
             while dungeonActive and alive() and tries > 0 do
-                local en = findEnemiesInRoom("Dungeon Easy", currentRI)
-                if #en == 0 then break end  -- room cleared
+                local en = currentRI
+                    and findEnemiesInRoom("Dungeon Easy", currentRI)
+                    or  findEnemiesInArea("Dungeon Easy")
+                if #en == 0 then break end
                 local t = nearestEnemy(en)
                 if t then
                     stickToTarget(t, function() return dungeonActive and alive() end)
@@ -666,6 +679,7 @@ local function dungeonLoop()
     if dungDot then TweenSvc:Create(dungDot,dti,{BackgroundColor3=C.dotY}):Play() end
     task.wait(3)  -- jeda sebelum nunggu dungeon berikutnya
   end
+  dungLoopLive = false
 end
 
 local function getCullingWave()
@@ -730,21 +744,21 @@ local function cullingLoop()
 end
 
 local function trialLoop()
+  if trialLoopLive then return end
+  trialLoopLive = true
     local myPrio = function() return priorities["Trial Easy"] or 2 end
 
     local function trialHigherActive()
         local p = myPrio()
-        if dungeonRunning  and (priorities["Dungeon Easy"] or 1) < p then return true end
+        if (dungeonActive or dungeonRunning) and (priorities["Dungeon Easy"] or 1) < p then return true end
         if worldBossActive and detectWorldBoss() and (priorities["World Boss"] or 5) < p then return true end
         return false
     end
 
   while trialActive and alive() do
-    -- snapshot CreatedAt sebelum nunggu: detect session BARU (bukan sisa session lama)
-    local prevCA = getCreatedAt("Trial Easy")
+    -- tunggu sampai session terbuka (Part (Start) muncul)
     while trialActive and alive() do
-        local cur = getCreatedAt("Trial Easy")
-        if cur > 0 and cur ~= prevCA then break end  -- session baru terbuka
+        if gamemodeIsOpen("Trial Easy") then break end
         task.wait(1)
     end
     if not trialActive or not alive() then return end
@@ -812,6 +826,7 @@ local function trialLoop()
     if trialDot then TweenSvc:Create(trialDot,dti,{BackgroundColor3=C.dotY}):Play() end
     task.wait(3)
   end
+  trialLoopLive = false
 end
 
 -- ════════════════════════════════════════════════════════
