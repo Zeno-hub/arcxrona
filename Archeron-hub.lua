@@ -538,14 +538,17 @@ local function getDungeonRoom()
     return ok and tonumber(v) or 0
 end
 
--- cek apakah dungeon/trial sudah open sekarang
--- path: workspace.Client.Maps[mapName].StateManager["Part (Start)"]
--- Part (Start) ada = session aktif; nil/error = belum open
-local function gamemodeIsOpen(mapName)
+-- baca nilai CreatedAt (timestamp session aktif). 0 = tidak ada session
+local function getCreatedAt(mapName)
     local ok, v = pcall(function()
-        return workspace.Client.Maps[mapName].StateManager["Part (Start)"]
+        return workspace.Client.Maps[mapName].GamemodeSessions.Global.StateManager.CreatedAt.Value
     end)
-    return ok and v ~= nil
+    return ok and tonumber(v) or 0
+end
+
+-- gamemodeIsOpen: CreatedAt > 0 = session sedang aktif
+local function gamemodeIsOpen(mapName)
+    return getCreatedAt(mapName) > 0
 end
 
 -- isBossActive: Sins Kingdom di Teleport punya Spawn = World Boss lagi aktif
@@ -575,9 +578,11 @@ local function dungeonLoop()
   if dungLoopLive then return end
   dungLoopLive = true
   while dungeonActive and alive() do
-    -- tunggu sampai session terbuka (Part (Start) muncul)
+    -- snapshot CreatedAt sebelum nunggu: detect session BARU (bukan sisa session lama)
+    local prevCA = getCreatedAt("Dungeon Easy")
     while dungeonActive and alive() do
-        if gamemodeIsOpen("Dungeon Easy") then break end
+        local cur = getCreatedAt("Dungeon Easy")
+        if cur > 0 and cur ~= prevCA then break end
         task.wait(1)
     end
     if not dungeonActive or not alive() then return end
@@ -756,9 +761,11 @@ local function trialLoop()
     end
 
   while trialActive and alive() do
-    -- tunggu sampai session terbuka (Part (Start) muncul)
+    -- snapshot CreatedAt sebelum nunggu: detect session BARU (bukan sisa session lama)
+    local prevCA = getCreatedAt("Trial Easy")
     while trialActive and alive() do
-        if gamemodeIsOpen("Trial Easy") then break end
+        local cur = getCreatedAt("Trial Easy")
+        if cur > 0 and cur ~= prevCA then break end
         task.wait(1)
     end
     if not trialActive or not alive() then return end
@@ -863,10 +870,10 @@ local C = {
 local vp   = workspace.CurrentCamera.ViewportSize
 local GW   = math.min(460, math.floor(vp.X) - 16)
 
-local HDR_H    = 38
-local SIDEBAR_W= 82
-local BODY_H   = 236
-local BOT_H    = 42
+local HDR_H    = 40
+local SIDEBAR_W= 84
+local BODY_H   = 258
+local BOT_H    = 44
 local TOTAL_H  = HDR_H + BODY_H + BOT_H  -- 316
 local ROW_H    = 34
 local ITEM_H   = 28
@@ -907,11 +914,11 @@ local function makeDrag(handle, target)
     end)
 end
 
--- status dot: bulat kecil di kiri toggle row; warna berubah live
+-- status dot dihilangkan (Visible=false agar tween tidak error)
 local function makeStatusDot(parent)
     local dot = N("Frame",{
         Size=UDim2.new(0,8,0,8), Position=UDim2.new(0,6,0.5,-4),
-        BackgroundColor3=C.dotD, BorderSizePixel=0, Parent=parent,
+        BackgroundColor3=C.dotD, BorderSizePixel=0, Visible=false, Parent=parent,
     })
     CR(999, dot)
     return dot
@@ -963,6 +970,7 @@ local main = N("Frame",{
     ClipsDescendants=true, Parent=gui,
 })
 CR(10, main); ST(C.sep, 1.2, main)
+local uiScale = N("UIScale",{Scale=1.0, Parent=main})
 
 -- ── HEADER ──────────────────────────────────────────────
 local hdr = N("Frame",{
@@ -984,12 +992,12 @@ local nb2 = N("Frame",{Size=UDim2.new(0,3,0,14), Position=UDim2.new(0,15,0.5,-7)
     BackgroundColor3=C.accHi, BorderSizePixel=0, Parent=hdr})
 CR(2, nb2)
 -- "ARCHERON" putih + "HUB" teal, centered-ish
-N("TextLabel",{Size=UDim2.new(0,90,1,0), Position=UDim2.new(0,24,0,0),
+local hdrName1 = N("TextLabel",{Size=UDim2.new(0,90,1,0), Position=UDim2.new(0,24,0,0),
     BackgroundTransparency=1, Text="ARCHERON",
     TextColor3=Color3.fromRGB(235,220,255),
     TextSize=13, Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=hdr})
-N("TextLabel",{Size=UDim2.new(0,36,1,0), Position=UDim2.new(0,100,0,0),
+local hdrName2 = N("TextLabel",{Size=UDim2.new(0,36,1,0), Position=UDim2.new(0,100,0,0),
     BackgroundTransparency=1, Text="HUB",
     TextColor3=C.acc2,
     TextSize=13, Font=Enum.Font.GothamBold,
@@ -1028,7 +1036,7 @@ N("Frame",{Size=UDim2.new(1,0,0,12), Position=UDim2.new(0,0,0,0),
 local CATS       = {
     {"Main",   Color3.fromRGB(  0,200,175)},   -- teal
     {"Mode",   Color3.fromRGB( 90,130,255)},   -- blue
-    {"Config", Color3.fromRGB(160, 80,255)},   -- purple
+    {"Settings", Color3.fromRGB(160, 80,255)},  -- purple
 }
 local PILL_W     = SIDEBAR_W - 14   -- 68px
 local PILL_H     = 24
@@ -1053,13 +1061,14 @@ for i, cat in ipairs(CATS) do
     })
     CR(999, pill)
     if isAct then ST(C.sep,0.8,pill) end
-    -- dot icon (colored circle, bukan emoji)
-    local dotIcon = N("Frame",{
-        Size=UDim2.new(0,7,0,7), Position=UDim2.new(0,8,0.5,-3.5),
-        BackgroundColor3=isAct and cat[2] or C.sub,
-        BorderSizePixel=0, Parent=pill,
+    -- icon "|" sebagai pengganti dot bulat
+    local dotIcon = N("TextLabel",{
+        Size=UDim2.new(0,14,1,0), Position=UDim2.new(0,5,0,0),
+        BackgroundTransparency=1, Text="|",
+        TextColor3=isAct and cat[2] or C.sub,
+        TextSize=12, Font=Enum.Font.GothamBold,
+        Parent=pill,
     })
-    CR(999, dotIcon)
     -- label
     local lbl = N("TextLabel",{
         Size=UDim2.new(1,-20,1,0), Position=UDim2.new(0,20,0,0),
@@ -1076,14 +1085,14 @@ for i, cat in ipairs(CATS) do
         -- deactivate old
         local old = tabPills[activeTab]
         TweenSvc:Create(old.pill, ti05, {BackgroundColor3=C.side}):Play()
-        TweenSvc:Create(old.dot,  ti05, {BackgroundColor3=C.sub}):Play()
+        TweenSvc:Create(old.dot,  ti05, {TextColor3=C.sub}):Play()
         TweenSvc:Create(old.lbl,  ti05, {TextColor3=C.sub}):Play()
         pcall(function() old.pill:FindFirstChildOfClass("UIStroke"):Destroy() end)
         if tabContents[activeTab] then tabContents[activeTab].Visible=false end
         -- activate new
         activeTab = idx
         TweenSvc:Create(pill, ti05, {BackgroundColor3=C.tabAct}):Play()
-        TweenSvc:Create(dotIcon, ti05, {BackgroundColor3=cat[2]}):Play()
+        TweenSvc:Create(dotIcon, ti05, {TextColor3=cat[2]}):Play()
         TweenSvc:Create(lbl,  ti05, {TextColor3=C.txt}):Play()
         ST(C.sep,0.8,pill)
         if tabContents[idx] then tabContents[idx].Visible=true end
@@ -1515,10 +1524,9 @@ buildEnemyList = function()
         local item = N("Frame",{
             Size=UDim2.new(1,0,0,ITEM_H), Position=UDim2.new(0,0,0,(i-1)*ITEM_H),
             BackgroundTransparency=1, BorderSizePixel=0, Parent=enemyItemsCard})
-        local rc = RARITY_COLOR[e.rarity or 1]
-        local rs = N("Frame",{Size=UDim2.new(0,2,0,14), Position=UDim2.new(0,8,0.5,-7),
-            BackgroundColor3=rc, BorderSizePixel=0, Parent=item})
-        CR(1, rs)
+        N("TextLabel",{Size=UDim2.new(0,12,1,0), Position=UDim2.new(0,6,0,0),
+            BackgroundTransparency=1, Text="|",
+            TextColor3=C.sub, TextSize=12, Font=Enum.Font.GothamBold, Parent=item})
         local chk = N("Frame",{Size=UDim2.new(0,13,0,13), Position=UDim2.new(0,18,0.5,-6),
             BackgroundColor3=enabledEnemies[i] and C.acc or C.item,
             BorderSizePixel=0, Parent=item})
@@ -1736,10 +1744,152 @@ gmy = gmy + ROW_H + PAD + 4
 -- ════════════════════════════════════════════════════════
 local scrollSet = makeScroll(false)
 tabContents[3]  = scrollSet
-local sc = makeCard(scrollSet, PAD, ROW_H)
-N("TextLabel",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
-    Text="Settings (coming soon)", TextColor3=C.sub,
-    TextSize=10, Font=Enum.Font.Gotham, Parent=sc})
+local sy = PAD
+
+local function secSet(txt)
+    N("TextLabel",{
+        Size=UDim2.new(1,-(CARD_M*2),0,16),
+        Position=UDim2.new(0,CARD_M,0,sy),
+        BackgroundTransparency=1, Text=txt,
+        TextColor3=C.acc2, TextSize=8, Font=Enum.Font.GothamBold,
+        TextXAlignment=Enum.TextXAlignment.Left, Parent=scrollSet,
+    })
+    sy = sy + 18
+end
+
+-- ── UI Scale ─────────────────────────────────────────
+secSet("TAMPILAN")
+local scaleCard = makeCard(scrollSet, sy, ROW_H)
+N("TextLabel",{Size=UDim2.new(0,100,1,0), Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1, Text="Ukuran GUI",
+    TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=scaleCard})
+N("TextLabel",{Size=UDim2.new(0,80,1,0), Position=UDim2.new(0,100,0,0),
+    BackgroundTransparency=1, Text="Saran: 0.8–1.3",
+    TextColor3=Color3.fromRGB(80,60,120), TextSize=7, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=scaleCard})
+makeNumInput(scaleCard, -54, 10, 5, 20, function(v)
+    uiScale.Scale = v / 10
+end)
+sy = sy + ROW_H + PAD
+-- hint baris kedua
+local scaleHint = makeCard(scrollSet, sy, 22)
+N("TextLabel",{Size=UDim2.new(1,-10,1,0), Position=UDim2.new(0,8,0,0),
+    BackgroundTransparency=1,
+    Text="Masukkan angka 5–20 (default: 10 = normal, 13 = lebih besar)",
+    TextColor3=Color3.fromRGB(80,60,120), TextSize=7, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=scaleHint})
+sy = sy + 22 + PAD
+
+-- ── Hub Name ─────────────────────────────────────────
+secSet("NAMA HUB")
+local nameCard = makeCard(scrollSet, sy, ROW_H)
+N("TextLabel",{Size=UDim2.new(0,80,1,0), Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1, Text="Nama",
+    TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=nameCard})
+local nameBox = N("TextBox",{
+    Size=UDim2.new(0,140,0,22), Position=UDim2.new(1,-148,0.5,-11),
+    BackgroundColor3=C.input, Text="ARCHERON HUB",
+    TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
+    ClearTextOnFocus=false, BorderSizePixel=0, Parent=nameCard,
+})
+CR(6, nameBox); ST(C.sep, 0.8, nameBox)
+nameBox.FocusLost:Connect(function()
+    local full = nameBox.Text or "ARCHERON HUB"
+    local parts = {}
+    for w in full:gmatch("%S+") do table.insert(parts, w) end
+    if #parts == 0 then full="ARCHERON HUB"; nameBox.Text=full; parts={"ARCHERON","HUB"} end
+    if #parts == 1 then
+        hdrName1.Text = parts[1]; hdrName2.Text = ""
+    else
+        hdrName1.Text = parts[1]; hdrName2.Text = table.concat(parts, " ", 2)
+    end
+end)
+sy = sy + ROW_H + PAD
+
+-- ── Warna GUI ─────────────────────────────────────────
+secSet("WARNA GUI")
+local THEMES = {
+    {name="Ungu",  acc=Color3.fromRGB( 90, 55,215), hi=Color3.fromRGB(150,100,255), acc2=Color3.fromRGB(  0,200,175)},
+    {name="Merah", acc=Color3.fromRGB(200, 40, 80), hi=Color3.fromRGB(255, 90,130), acc2=Color3.fromRGB(255,160, 40)},
+    {name="Biru",  acc=Color3.fromRGB( 30,120,255), hi=Color3.fromRGB( 80,170,255), acc2=Color3.fromRGB(  0,220,200)},
+    {name="Hijau", acc=Color3.fromRGB( 30,180, 90), hi=Color3.fromRGB( 80,230,140), acc2=Color3.fromRGB(  0,200,175)},
+}
+local colorRow = makeCard(scrollSet, sy, ROW_H)
+local cxOff = 10
+for ti, th in ipairs(THEMES) do
+    local swatch = N("TextButton",{
+        Size=UDim2.new(0,54,0,22), Position=UDim2.new(0,cxOff,0.5,-11),
+        BackgroundColor3=th.acc, Text=th.name,
+        TextColor3=Color3.fromRGB(255,255,255), TextSize=8,
+        Font=Enum.Font.GothamBold, BorderSizePixel=0, Parent=colorRow,
+    })
+    CR(5, swatch)
+    local tIdx = ti
+    swatch.MouseButton1Click:Connect(function()
+        local t = THEMES[tIdx]
+        C.acc = t.acc; C.accHi = t.hi; C.acc2 = t.acc2
+        -- update visible accent elements
+        pcall(function() hdrName2.TextColor3 = t.acc2 end)
+        for _,p in ipairs(tabPills) do
+            pcall(function()
+                if tabPills[activeTab] == p then
+                    p.dot.TextColor3 = p.dotCol
+                end
+            end)
+        end
+    end)
+    cxOff = cxOff + 58
+end
+sy = sy + ROW_H + PAD
+
+-- ── Auto Execute ─────────────────────────────────────
+secSet("AUTO EXECUTE")
+local autoExec = false
+local autoExecConn = nil
+local aeCard = makeCard(scrollSet, sy, ROW_H)
+N("TextLabel",{Size=UDim2.new(0,200,1,0), Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1, Text="Auto Execute (setelah rejoin)",
+    TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=aeCard})
+local aePill, aeKnob = makePill(aeCard, -48)
+sy = sy + ROW_H + PAD
+
+local aeUrlCard = makeCard(scrollSet, sy, ROW_H)
+N("TextLabel",{Size=UDim2.new(0,50,1,0), Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1, Text="URL Script",
+    TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=aeUrlCard})
+local aeUrlBox = N("TextBox",{
+    Size=UDim2.new(0,190,0,22), Position=UDim2.new(1,-198,0.5,-11),
+    BackgroundColor3=C.input, Text="https://",
+    TextColor3=C.txt, TextSize=8, Font=Enum.Font.Gotham,
+    ClearTextOnFocus=false, BorderSizePixel=0, Parent=aeUrlCard,
+})
+CR(6, aeUrlBox); ST(C.sep, 0.8, aeUrlBox)
+sy = sy + ROW_H + PAD
+
+local function applyAutoExec(on)
+    autoExec = on
+    TweenSvc:Create(aePill,  TweenInfo.new(0.15),{BackgroundColor3=on and C.tOn  or C.tOff}):Play()
+    TweenSvc:Create(aeKnob, TweenInfo.new(0.15),{
+        BackgroundColor3=on and C.kOn or C.kOff,
+        Position=on and UDim2.new(1,-18,0.5,-8) or UDim2.new(0,2,0.5,-8),
+    }):Play()
+    if autoExecConn then autoExecConn:Disconnect(); autoExecConn = nil end
+    if on then
+        autoExecConn = lp.CharacterAdded:Connect(function()
+            task.wait(4)
+            local url = aeUrlBox.Text or ""
+            if #url > 8 then
+                pcall(function() loadstring(game:HttpGet(url,true))() end)
+            end
+        end)
+    end
+end
+N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=aeCard}
+).MouseButton1Click:Connect(function() applyAutoExec(not autoExec) end)
 
 -- ════════════════════════════════════════════════════════
 -- BOTTOM BAR  (avatar + name only)
