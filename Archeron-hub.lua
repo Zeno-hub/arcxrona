@@ -191,7 +191,7 @@ local function worldBossLoop()
         if not isBossActive() then task.wait(2); continue end
         local boss = detectWorldBoss()
         if boss and not isDead(boss) then
-            spamTP(boss, function()
+            stickToTarget(boss, function()
                 return worldBossActive and alive() and not isDead(boss)
             end)
         else
@@ -233,18 +233,29 @@ local function isDead(part)
     return not part or part.Parent == nil or part:GetAttribute("Died")
 end
 
--- spam CFrame ke enemy sampai mati
-local function spamTP(part, activeCheck)
+-- TP sekali ke target, re-TP kalau player bergerak, tunggu mati baru return
+local function stickToTarget(part, activeCheck)
+    if isDead(part) then return end
+    local function doTP()
+        if not part or not hrp then return nil end
+        local pos = part.Position + Vector3.new(0, 3, 0)
+        clearMovers()
+        hrp.CFrame = CFrame.new(pos)
+        tpFighters()
+        return hrp.Position
+    end
+    local lastPos = doTP()
     local timeout = 0
-    while timeout < 20 do
+    while timeout < 25 do
         if isDead(part) then break end
         if activeCheck and not activeCheck() then break end
-        clearMovers()
-        if hrp then hrp.CFrame = CFrame.new(part.Position + Vector3.new(0, 3, 0)) end
-        tpFighters()
-        task.wait(0.05); timeout = timeout + 0.05
+        task.wait(0.1); timeout = timeout + 0.1
+        if not hrp then break end
+        -- re-TP kalau posisi bergeser > 2 studs (ada pergerakan)
+        if lastPos and (hrp.Position - lastPos).Magnitude > 2 then
+            lastPos = doTP()
+        end
     end
-    task.wait(0.1)
 end
 
 local function fireBridgeNet(payload)
@@ -334,7 +345,7 @@ local function farmLoop()
         if part then
             lastTpW = nil
             -- pass farmShouldPause ke activeCheck: kalau priority berubah mid-TP langsung berhenti
-            spamTP(part, function() return farmActive and alive() and not farmShouldPause() end)
+            stickToTarget(part, function() return farmActive and alive() and not farmShouldPause() end)
         else
             if farmShouldPause() then task.wait(1); continue end
             if not farmCanTpWorld() then task.wait(1); continue end
@@ -515,14 +526,18 @@ local function getDungeonRoom()
 end
 
 -- cek apakah dungeon/trial sudah open sekarang (ada enemy di folder)
--- gamemodeIsOpen: cek workspace.Client.Maps[mapName].GamemodeSessions.Global.StateManager.CreatedAt
--- CreatedAt adalah NumberValue; Value > 0 = session aktif dan bisa di-join
-local function gamemodeIsOpen(mapName)
-    local ok, createdAt = pcall(function()
-        return workspace.Client.Maps[mapName].GamemodeSessions.Global.StateManager.CreatedAt
+-- baca nilai CreatedAt (timestamp session aktif). 0 = tidak ada session
+local function getCreatedAt(mapName)
+    local ok, v = pcall(function()
+        return workspace.Client.Maps[mapName].GamemodeSessions.Global.StateManager.CreatedAt.Value
     end)
-    if not ok or not createdAt then return false end
-    return createdAt.Value ~= nil and createdAt.Value > 0
+    return ok and tonumber(v) or 0
+end
+
+-- gamemodeIsOpen: cek workspace.Client.Maps[mapName].GamemodeSessions.Global.StateManager.CreatedAt
+-- CreatedAt adalah NumberValue (Unix timestamp); Value > 0 = session sedang aktif
+local function gamemodeIsOpen(mapName)
+    return getCreatedAt(mapName) > 0
 end
 
 -- isBossActive: Sins Kingdom di Teleport punya Spawn = World Boss lagi aktif
@@ -550,9 +565,11 @@ end
 
 local function dungeonLoop()
   while dungeonActive and alive() do
-    -- tunggu dungeon open: Spawn muncul di workspace.Server.Teleport["Dungeon Easy"]
+    -- snapshot CreatedAt sebelum nunggu: detect session BARU (bukan sisa session lama)
+    local prevCA = getCreatedAt("Dungeon Easy")
     while dungeonActive and alive() do
-        if gamemodeIsOpen("Dungeon Easy") then break end
+        local cur = getCreatedAt("Dungeon Easy")
+        if cur > 0 and cur ~= prevCA then break end  -- session baru terbuka
         task.wait(1)
     end
     if not dungeonActive or not alive() then return end
@@ -580,7 +597,7 @@ local function dungeonLoop()
                     local b = detectWorldBoss()
                     if not b or isDead(b) then break end
                     if not worldBossActive or (priorities["World Boss"] or 5) >= myDungPrio then break end
-                    spamTP(b, function() return dungeonActive and alive() and worldBossActive end)
+                    stickToTarget(b, function() return dungeonActive and alive() and worldBossActive end)
                 end
                 if dungeonActive and alive() and gamemodeHasEnemies("Dungeon Easy") then
                     joinGamemode("Dungeon Easy")
@@ -603,7 +620,7 @@ local function dungeonLoop()
                 if #en == 0 then break end  -- room cleared
                 local t = nearestEnemy(en)
                 if t then
-                    spamTP(t, function() return dungeonActive and alive() end)
+                    stickToTarget(t, function() return dungeonActive and alive() end)
                 end
                 tries = tries - 1
             end
@@ -691,7 +708,7 @@ local function cullingLoop()
             local en = findEnemiesInArea("Culling Game")
             if #en == 0 then break end
             local t = nearestEnemy(en)
-            if t then spamTP(t, function() return cullingActive and alive() end) end
+            if t then stickToTarget(t, function() return cullingActive and alive() end) end
             tries = tries - 1
         end
         if not cullingActive then break end
@@ -723,9 +740,11 @@ local function trialLoop()
     end
 
   while trialActive and alive() do
-    -- tunggu trial open: Spawn muncul di workspace.Server.Teleport["Trial Easy"]
+    -- snapshot CreatedAt sebelum nunggu: detect session BARU (bukan sisa session lama)
+    local prevCA = getCreatedAt("Trial Easy")
     while trialActive and alive() do
-        if gamemodeIsOpen("Trial Easy") then break end
+        local cur = getCreatedAt("Trial Easy")
+        if cur > 0 and cur ~= prevCA then break end  -- session baru terbuka
         task.wait(1)
     end
     if not trialActive or not alive() then return end
@@ -766,7 +785,7 @@ local function trialLoop()
             if #en == 0 then break end
             local t = nearestEnemy(en)
             if t then
-                spamTP(t, function()
+                stickToTarget(t, function()
                     return trialActive and alive() and not trialHigherActive()
                 end)
             end
