@@ -251,8 +251,8 @@ local function stickToTarget(part, activeCheck)
         if activeCheck and not activeCheck() then break end
         task.wait(0.1); timeout = timeout + 0.1
         if not hrp then break end
-        -- re-TP kalau posisi bergeser > 2 studs (ada pergerakan)
-        if lastPos and (hrp.Position - lastPos).Magnitude > 2 then
+        -- re-TP kalau posisi bergeser > 8 studs (player kena knockback jauh)
+        if lastPos and (hrp.Position - lastPos).Magnitude > 8 then
             lastPos = doTP()
         end
     end
@@ -296,12 +296,17 @@ local function findNPC(enemy)
     return #hits > 0 and hits[math.random(#hits)] or nil
 end
 
--- helper: cek apakah farm harus pause (NPC kill berhenti)
--- cek dungeonActive + dungeonRunning: supaya reliabel meski loop sempat reset *Running
+-- helper: cek apakah farm harus pause
+-- pause HANYA kalau sedang di dalam gamemode (Start Part ada) + toggle ON + priority lebih tinggi
+-- kalau toggle OFF atau session belum buka (belum di dalam) → farm tetap jalan
 local function farmShouldPause()
     local p = priorities["Mob Farm"] or 3
-    if (dungeonActive or dungeonRunning) and (priorities["Dungeon Easy"] or 1) < p then return true end
-    if (trialActive   or trialRunning)   and (priorities["Trial Easy"]   or 2) < p then return true end
+    -- cek via isInsideGamemode (pakai Start Part): hanya berlaku saat beneran di dalam
+    if isInsideGamemode("Dungeon Easy") and dungeonActive and (priorities["Dungeon Easy"] or 1) < p then return true end
+    if isInsideGamemode("Trial Easy")   and trialActive   and (priorities["Trial Easy"]   or 2) < p then return true end
+    -- safety net: kalau Running masih true tapi Start sempat hilang sejenak
+    if dungeonRunning and (priorities["Dungeon Easy"] or 1) < p then return true end
+    if trialRunning   and (priorities["Trial Easy"]   or 2) < p then return true end
     if (cullingActive or cullingRunning) and (priorities["Culling Game"] or 4) < p then return true end
     if worldBossActive then
         local boss = detectWorldBoss()
@@ -311,12 +316,13 @@ local function farmShouldPause()
 end
 
 -- helper: cek apakah farm boleh tpWorld
--- lebih ketat: blokir tpWorld kalau ada gamemode AKTIF (Active) prioritas lebih tinggi,
--- supaya farm tidak teleport player keluar saat dungeon/trial/culling sedang loading/waiting
+-- blokir tpWorld kalau sedang di dalam gamemode + toggle ON + priority lebih tinggi
 local function farmCanTpWorld()
     local p = priorities["Mob Farm"] or 3
-    if dungeonActive  and (priorities["Dungeon Easy"] or 1) < p then return false end
-    if trialActive    and (priorities["Trial Easy"]   or 2) < p then return false end
+    if isInsideGamemode("Dungeon Easy") and dungeonActive and (priorities["Dungeon Easy"] or 1) < p then return false end
+    if isInsideGamemode("Trial Easy")   and trialActive   and (priorities["Trial Easy"]   or 2) < p then return false end
+    if dungeonRunning and (priorities["Dungeon Easy"] or 1) < p then return false end
+    if trialRunning   and (priorities["Trial Easy"]   or 2) < p then return false end
     if cullingActive  and (priorities["Culling Game"] or 4) < p then return false end
     if worldBossActive then
         local boss = detectWorldBoss()
@@ -341,8 +347,7 @@ local function farmLoop()
         local enemy = pool[math.random(#pool)]
         local part  = findNPC(enemy)
         if part then
-            lastTpW = nil
-            -- pass farmShouldPause ke activeCheck: kalau priority berubah mid-TP langsung berhenti
+            -- don't reset lastTpW here: keeps "already at world" guard intact after killing all NPCs
             stickToTarget(part, function() return farmActive and alive() and not farmShouldPause() end)
         else
             if farmShouldPause() then task.wait(1); continue end
@@ -546,9 +551,17 @@ local function getCreatedAt(mapName)
     return ok and tonumber(v) or 0
 end
 
--- gamemodeIsOpen: CreatedAt > 0 = session sedang aktif
+-- gamemodeIsOpen: CreatedAt > 0 = session sedang aktif (untuk auto-join)
 local function gamemodeIsOpen(mapName)
     return getCreatedAt(mapName) > 0
+end
+
+-- isInsideGamemode: ada Part "Start" = player sedang BERADA di dalam gamemode
+local function isInsideGamemode(mapName)
+    local ok, part = pcall(function()
+        return workspace.Client.Maps[mapName]:FindFirstChild("Start")
+    end)
+    return ok and part ~= nil
 end
 
 -- isBossActive: Sins Kingdom di Teleport punya Spawn = World Boss lagi aktif
@@ -578,12 +591,12 @@ local function dungeonLoop()
   if dungLoopLive then return end
   dungLoopLive = true
   while dungeonActive and alive() do
-    -- snapshot CreatedAt sebelum nunggu: detect session BARU (bukan sisa session lama)
-    local prevCA = getCreatedAt("Dungeon Easy")
-    while dungeonActive and alive() do
-        local cur = getCreatedAt("Dungeon Easy")
-        if cur > 0 and cur ~= prevCA then break end
-        task.wait(1)
+    -- kalau session udah buka pas toggle ON, langsung join; kalau belum, tunggu
+    if not gamemodeIsOpen("Dungeon Easy") then
+        while dungeonActive and alive() do
+            if gamemodeIsOpen("Dungeon Easy") then break end
+            task.wait(1)
+        end
     end
     if not dungeonActive or not alive() then return end
 
@@ -593,9 +606,32 @@ local function dungeonLoop()
     task.wait(4)
     local lastRoom = getDungeonRoom()
 
+    -- cek apakah ada fitur lain yang toggle ON + priority lebih tinggi dari dungeon
+    local function dungeonShouldYield()
+        local p = priorities["Dungeon Easy"] or 1
+        if farmActive   and (priorities["Mob Farm"]     or 3) < p then return true end
+        if trialActive  and (priorities["Trial Easy"]   or 2) < p then return true end
+        if cullingActive and (priorities["Culling Game"] or 4) < p then return true end
+        return false
+    end
+
+    local yieldedByPrio = false
     while dungeonActive and alive() do
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
+
+        -- priority yield: kalau ada fitur lain yang lebih tinggi → keluar dungeon
+        if dungeonShouldYield() then
+            dungeonRunning = false
+            if dungDot then TweenSvc:Create(dungDot,dti,{BackgroundColor3=C.dotY}):Play() end
+            leaveGamemode(); task.wait(1)
+            -- tunggu sampai priority balik normal
+            while dungeonActive and alive() and dungeonShouldYield() do
+                task.wait(1)
+            end
+            yieldedByPrio = true
+            break
+        end
 
         -- world boss interrupt: kalau world boss prioritynya lebih tinggi (angka lebih kecil)
         local myDungPrio = priorities["Dungeon Easy"] or 1
@@ -670,10 +706,10 @@ local function dungeonLoop()
                 if r ~= lastRoom then lastRoom = r; break end
                 task.wait(0.5); wc = wc + 1
             end
-            -- tunggu enemy pertama muncul di room baru
+            -- tunggu enemy pertama muncul di room baru (fallback ke area jika roomIndex belum ada)
             local spawnWait = 0
             while dungeonActive and spawnWait < 15 do
-                if getLowestRoomIndex("Dungeon Easy") then break end
+                if getLowestRoomIndex("Dungeon Easy") or #findEnemiesInArea("Dungeon Easy") > 0 then break end
                 task.wait(0.3); spawnWait = spawnWait + 1
             end
         else
@@ -682,6 +718,12 @@ local function dungeonLoop()
     end
     dungeonRunning = false
     if dungDot then TweenSvc:Create(dungDot,dti,{BackgroundColor3=C.dotY}):Play() end
+    -- kalau keluar karena priority yield, tunggu sampai yield beres sebelum cari session baru
+    if yieldedByPrio then
+        while dungeonActive and alive() and dungeonShouldYield() do
+            task.wait(1)
+        end
+    end
     task.wait(3)  -- jeda sebelum nunggu dungeon berikutnya
   end
   dungLoopLive = false
@@ -755,18 +797,22 @@ local function trialLoop()
 
     local function trialHigherActive()
         local p = myPrio()
-        if (dungeonActive or dungeonRunning) and (priorities["Dungeon Easy"] or 1) < p then return true end
+        -- dungeon: cek via isInsideGamemode (toggle ON + di dalam) atau dungeonRunning (safety)
+        if isInsideGamemode("Dungeon Easy") and dungeonActive and (priorities["Dungeon Easy"] or 1) < p then return true end
+        if dungeonRunning and (priorities["Dungeon Easy"] or 1) < p then return true end
+        -- farm: kalau toggle ON + farm priority lebih tinggi → trial yield
+        if farmActive and (priorities["Mob Farm"] or 3) < p then return true end
         if worldBossActive and detectWorldBoss() and (priorities["World Boss"] or 5) < p then return true end
         return false
     end
 
   while trialActive and alive() do
-    -- snapshot CreatedAt sebelum nunggu: detect session BARU (bukan sisa session lama)
-    local prevCA = getCreatedAt("Trial Easy")
-    while trialActive and alive() do
-        local cur = getCreatedAt("Trial Easy")
-        if cur > 0 and cur ~= prevCA then break end
-        task.wait(1)
+    -- kalau session udah buka pas toggle ON, langsung join; kalau belum, tunggu
+    if not gamemodeIsOpen("Trial Easy") then
+        while trialActive and alive() do
+            if gamemodeIsOpen("Trial Easy") then break end
+            task.wait(1)
+        end
     end
     if not trialActive or not alive() then return end
 
@@ -1352,7 +1398,7 @@ local prioSelected = 1  -- row yang dipilih (1-based rank)
 
 -- header
 N("TextLabel",{Size=UDim2.new(1,-8,0,PRIO_HDR_H), Position=UDim2.new(0,10,0,0),
-    BackgroundTransparency=1, Text="PRIORITY  (pilih fitur → ▲ UP / ▼ DOWN)",
+    BackgroundTransparency=1, Text="PRIORITY  (1 = top priority)",
     TextColor3=C.sub, TextSize=8, Font=Enum.Font.GothamBold,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=prioCard})
 
@@ -1751,125 +1797,52 @@ local function secSet(txt)
         Size=UDim2.new(1,-(CARD_M*2),0,16),
         Position=UDim2.new(0,CARD_M,0,sy),
         BackgroundTransparency=1, Text=txt,
-        TextColor3=C.acc2, TextSize=8, Font=Enum.Font.GothamBold,
+        TextColor3=C.txt, TextSize=8, Font=Enum.Font.GothamBold,
         TextXAlignment=Enum.TextXAlignment.Left, Parent=scrollSet,
     })
     sy = sy + 18
 end
 
 -- ── UI Scale ─────────────────────────────────────────
-secSet("TAMPILAN")
+secSet("DISPLAY")
 local scaleCard = makeCard(scrollSet, sy, ROW_H)
 N("TextLabel",{Size=UDim2.new(0,100,1,0), Position=UDim2.new(0,12,0,0),
-    BackgroundTransparency=1, Text="Ukuran GUI",
-    TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
-    TextXAlignment=Enum.TextXAlignment.Left, Parent=scaleCard})
-N("TextLabel",{Size=UDim2.new(0,80,1,0), Position=UDim2.new(0,100,0,0),
-    BackgroundTransparency=1, Text="Saran: 0.8–1.3",
-    TextColor3=Color3.fromRGB(80,60,120), TextSize=7, Font=Enum.Font.Gotham,
+    BackgroundTransparency=1, Text="GUI Scale",
+    TextColor3=C.txt, TextSize=9, Font=Enum.Font.Gotham,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=scaleCard})
 makeNumInput(scaleCard, -54, 10, 5, 20, function(v)
     uiScale.Scale = v / 10
 end)
 sy = sy + ROW_H + PAD
--- hint baris kedua
 local scaleHint = makeCard(scrollSet, sy, 22)
 N("TextLabel",{Size=UDim2.new(1,-10,1,0), Position=UDim2.new(0,8,0,0),
     BackgroundTransparency=1,
-    Text="Masukkan angka 5–20 (default: 10 = normal, 13 = lebih besar)",
-    TextColor3=Color3.fromRGB(80,60,120), TextSize=7, Font=Enum.Font.Gotham,
+    Text="Range: 5–20  (default 10 = normal · 13 = larger)",
+    TextColor3=C.sub, TextSize=7, Font=Enum.Font.Gotham,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=scaleHint})
 sy = sy + 22 + PAD
-
--- ── Hub Name ─────────────────────────────────────────
-secSet("NAMA HUB")
-local nameCard = makeCard(scrollSet, sy, ROW_H)
-N("TextLabel",{Size=UDim2.new(0,80,1,0), Position=UDim2.new(0,12,0,0),
-    BackgroundTransparency=1, Text="Nama",
-    TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
-    TextXAlignment=Enum.TextXAlignment.Left, Parent=nameCard})
-local nameBox = N("TextBox",{
-    Size=UDim2.new(0,140,0,22), Position=UDim2.new(1,-148,0.5,-11),
-    BackgroundColor3=C.input, Text="ARCHERON HUB",
-    TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
-    ClearTextOnFocus=false, BorderSizePixel=0, Parent=nameCard,
-})
-CR(6, nameBox); ST(C.sep, 0.8, nameBox)
-nameBox.FocusLost:Connect(function()
-    local full = nameBox.Text or "ARCHERON HUB"
-    local parts = {}
-    for w in full:gmatch("%S+") do table.insert(parts, w) end
-    if #parts == 0 then full="ARCHERON HUB"; nameBox.Text=full; parts={"ARCHERON","HUB"} end
-    if #parts == 1 then
-        hdrName1.Text = parts[1]; hdrName2.Text = ""
-    else
-        hdrName1.Text = parts[1]; hdrName2.Text = table.concat(parts, " ", 2)
-    end
-end)
-sy = sy + ROW_H + PAD
-
--- ── Warna GUI ─────────────────────────────────────────
-secSet("WARNA GUI")
-local THEMES = {
-    {name="Ungu",  acc=Color3.fromRGB( 90, 55,215), hi=Color3.fromRGB(150,100,255), acc2=Color3.fromRGB(  0,200,175)},
-    {name="Merah", acc=Color3.fromRGB(200, 40, 80), hi=Color3.fromRGB(255, 90,130), acc2=Color3.fromRGB(255,160, 40)},
-    {name="Biru",  acc=Color3.fromRGB( 30,120,255), hi=Color3.fromRGB( 80,170,255), acc2=Color3.fromRGB(  0,220,200)},
-    {name="Hijau", acc=Color3.fromRGB( 30,180, 90), hi=Color3.fromRGB( 80,230,140), acc2=Color3.fromRGB(  0,200,175)},
-}
-local colorRow = makeCard(scrollSet, sy, ROW_H)
-local cxOff = 10
-for ti, th in ipairs(THEMES) do
-    local swatch = N("TextButton",{
-        Size=UDim2.new(0,54,0,22), Position=UDim2.new(0,cxOff,0.5,-11),
-        BackgroundColor3=th.acc, Text=th.name,
-        TextColor3=Color3.fromRGB(255,255,255), TextSize=8,
-        Font=Enum.Font.GothamBold, BorderSizePixel=0, Parent=colorRow,
-    })
-    CR(5, swatch)
-    local tIdx = ti
-    swatch.MouseButton1Click:Connect(function()
-        local t = THEMES[tIdx]
-        C.acc = t.acc; C.accHi = t.hi; C.acc2 = t.acc2
-        -- update visible accent elements
-        pcall(function() hdrName2.TextColor3 = t.acc2 end)
-        for _,p in ipairs(tabPills) do
-            pcall(function()
-                if tabPills[activeTab] == p then
-                    p.dot.TextColor3 = p.dotCol
-                end
-            end)
-        end
-    end)
-    cxOff = cxOff + 58
-end
-sy = sy + ROW_H + PAD
 
 -- ── Auto Execute ─────────────────────────────────────
 secSet("AUTO EXECUTE")
 local autoExec = false
 local autoExecConn = nil
 local aeCard = makeCard(scrollSet, sy, ROW_H)
-N("TextLabel",{Size=UDim2.new(0,200,1,0), Position=UDim2.new(0,12,0,0),
-    BackgroundTransparency=1, Text="Auto Execute (setelah rejoin)",
-    TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
+N("TextLabel",{Size=UDim2.new(0,220,1,0), Position=UDim2.new(0,12,0,0),
+    BackgroundTransparency=1, Text="Re-execute on rejoin",
+    TextColor3=C.txt, TextSize=9, Font=Enum.Font.Gotham,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=aeCard})
 local aePill, aeKnob = makePill(aeCard, -48)
 sy = sy + ROW_H + PAD
 
-local aeUrlCard = makeCard(scrollSet, sy, ROW_H)
-N("TextLabel",{Size=UDim2.new(0,50,1,0), Position=UDim2.new(0,12,0,0),
-    BackgroundTransparency=1, Text="URL Script",
-    TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
-    TextXAlignment=Enum.TextXAlignment.Left, Parent=aeUrlCard})
-local aeUrlBox = N("TextBox",{
-    Size=UDim2.new(0,190,0,22), Position=UDim2.new(1,-198,0.5,-11),
-    BackgroundColor3=C.input, Text="https://",
-    TextColor3=C.txt, TextSize=8, Font=Enum.Font.Gotham,
-    ClearTextOnFocus=false, BorderSizePixel=0, Parent=aeUrlCard,
-})
-CR(6, aeUrlBox); ST(C.sep, 0.8, aeUrlBox)
-sy = sy + ROW_H + PAD
+local aeHint = makeCard(scrollSet, sy, 22)
+N("TextLabel",{Size=UDim2.new(1,-10,1,0), Position=UDim2.new(0,8,0,0),
+    BackgroundTransparency=1,
+    Text="Saves & re-runs this script automatically after every rejoin",
+    TextColor3=C.sub, TextSize=7, Font=Enum.Font.Gotham,
+    TextXAlignment=Enum.TextXAlignment.Left, Parent=aeHint})
+sy = sy + 22 + PAD
 
+local AE_FILE = "archeron_hub_v2.lua"
 local function applyAutoExec(on)
     autoExec = on
     TweenSvc:Create(aePill,  TweenInfo.new(0.15),{BackgroundColor3=on and C.tOn  or C.tOff}):Play()
@@ -1879,12 +1852,19 @@ local function applyAutoExec(on)
     }):Play()
     if autoExecConn then autoExecConn:Disconnect(); autoExecConn = nil end
     if on then
+        -- save current script to file so it persists across sessions
+        pcall(function()
+            local src = game:GetService("ScriptContext").Scripts and
+                script and script.Source or ""
+            if #src > 10 then writefile(AE_FILE, src) end
+        end)
         autoExecConn = lp.CharacterAdded:Connect(function()
             task.wait(4)
-            local url = aeUrlBox.Text or ""
-            if #url > 8 then
-                pcall(function() loadstring(game:HttpGet(url,true))() end)
-            end
+            pcall(function()
+                if isfile(AE_FILE) then
+                    loadstring(readfile(AE_FILE))()
+                end
+            end)
         end)
     end
 end
