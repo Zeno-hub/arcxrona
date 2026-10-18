@@ -620,6 +620,13 @@ local function dungeonLoop()
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
 
+        -- session selesai: Part "Start" hilang = dungeon sudah berakhir → farm bisa jalan lagi
+        if not isInsideGamemode("Dungeon Easy") then
+            dungeonRunning = false
+            if dungDot then TweenSvc:Create(dungDot,dti,{BackgroundColor3=C.dotY}):Play() end
+            break
+        end
+
         -- priority yield: kalau ada fitur lain yang lebih tinggi → keluar dungeon
         if dungeonShouldYield() then
             dungeonRunning = false
@@ -825,6 +832,13 @@ local function trialLoop()
     while trialActive and alive() do
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
+
+        -- session selesai: Part "Start" hilang = trial sudah berakhir → farm bisa jalan lagi
+        if not isInsideGamemode("Trial Easy") then
+            trialRunning = false
+            if trialDot then TweenSvc:Create(trialDot,dti,{BackgroundColor3=C.dotY}):Play() end
+            break
+        end
 
         -- cek priority: kalau ada yang lebih tinggi, keluar trial sementara dan tunggu
         if trialHigherActive() then
