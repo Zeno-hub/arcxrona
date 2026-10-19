@@ -1079,6 +1079,12 @@ local closeBtn = N("TextButton",{
     TextSize=15, Font=Enum.Font.GothamBold, BorderSizePixel=0, Parent=hdr,
 })
 CR(5, closeBtn)
+local adminBtn = N("TextButton",{
+    Size=UDim2.new(0,22,0,22), Position=UDim2.new(1,-54,0.5,-11),
+    BackgroundColor3=C.acc, Text="⚙", TextColor3=Color3.fromRGB(235,215,255),
+    TextSize=12, Font=Enum.Font.GothamBold, BorderSizePixel=0, Parent=hdr,
+})
+CR(5, adminBtn); ST(C.accHi, 0.6, adminBtn)
 makeDrag(hdr, main)
 
 -- ── LEFT SIDEBAR ────────────────────────────────────────
@@ -1249,7 +1255,7 @@ buildWorldList = function()
             resetEnemies(); buildEnemyList(); doMainLayout()
         end)
     end
-    doMainLayout()
+    if doMainLayout then doMainLayout() end  -- guard: nil saat dipanggil pertama kali (sebelum doMainLayout defined)
 end
 buildWorldList()
 
@@ -1970,6 +1976,222 @@ task.spawn(function()
         trialCountLabel.Text = string.format("⏱ trial open in %dm %02ds",   math.floor(rt/60), rt%60)
         task.wait(1)
     end
+end)
+
+-- ════════════════════════════════════════════════════════
+-- ADMIN PANEL
+-- ════════════════════════════════════════════════════════
+local RARITY_NAMES_LIST = {"Easy","Medium","Hard","Insane","Boss","Secret"}
+local apWorldNameVal = ""
+local apEnemyData    = {}
+for i=1,6 do apEnemyData[i]={name="",rarity=1} end
+
+-- forward declarations (diisi setelah UI dibuat)
+local apSubmitBtn, apSubmitLbl, apStep2Title
+local apEnemyBoxes, apRarityLbls, apRarityStrips = {}, {}, {}
+local apUpdateSubmit  -- function, diisi setelah submit btn dibuat
+
+local adminPanel = N("Frame",{
+    Size=UDim2.new(0,GW,0,TOTAL_H),
+    Position=UDim2.new(0.5,-GW/2,0.32,-TOTAL_H/2),
+    BackgroundColor3=C.bg, BorderSizePixel=0,
+    ClipsDescendants=true, Visible=false, Parent=gui,
+})
+CR(10,adminPanel); ST(C.sep,1.2,adminPanel)
+
+-- header
+local apHdr = N("Frame",{Size=UDim2.new(1,0,0,HDR_H), BackgroundColor3=C.hdr, BorderSizePixel=0, Parent=adminPanel})
+CR(10,apHdr)
+N("Frame",{Size=UDim2.new(1,0,0,10),Position=UDim2.new(0,0,1,-10),BackgroundColor3=C.hdr,BorderSizePixel=0,Parent=apHdr})
+N("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,1,-1),BackgroundColor3=C.acc,BorderSizePixel=0,Parent=apHdr})
+N("TextLabel",{Size=UDim2.new(1,-50,1,0),Position=UDim2.new(0,12,0,0),BackgroundTransparency=1,
+    Text="⚙  ADMIN PANEL",TextColor3=C.accHi,TextSize=12,Font=Enum.Font.GothamBold,
+    TextXAlignment=Enum.TextXAlignment.Left,Parent=apHdr})
+local apCloseBtn = N("TextButton",{Size=UDim2.new(0,22,0,22),Position=UDim2.new(1,-28,0.5,-11),
+    BackgroundColor3=C.red,Text="×",TextColor3=Color3.fromRGB(255,255,255),
+    TextSize=15,Font=Enum.Font.GothamBold,BorderSizePixel=0,Parent=apHdr})
+CR(5,apCloseBtn)
+makeDrag(apHdr,adminPanel)
+
+-- body scroll
+local apBody = N("ScrollingFrame",{
+    Size=UDim2.new(1,0,0,TOTAL_H-HDR_H), Position=UDim2.new(0,0,0,HDR_H),
+    BackgroundColor3=C.panel,BorderSizePixel=0,
+    ScrollBarThickness=3,ScrollBarImageColor3=C.acc,
+    CanvasSize=UDim2.new(0,0,0,0), AutomaticCanvasSize=Enum.AutomaticSize.Y,
+    ScrollingDirection=Enum.ScrollingDirection.Y, Parent=adminPanel,
+})
+
+-- ── Step containers ──
+local apStep1Frame = N("Frame",{Size=UDim2.new(1,0,0,160),Position=UDim2.new(0,0,0,0),
+    BackgroundTransparency=1,BorderSizePixel=0,Parent=apBody})
+local apStep2Frame = N("Frame",{Size=UDim2.new(1,0,0,400),Position=UDim2.new(0,0,0,0),
+    BackgroundTransparency=1,BorderSizePixel=0,Visible=false,Parent=apBody})
+
+-- ── STEP 1: World Name ──
+N("TextLabel",{Size=UDim2.new(1,-(CARD_M*2),0,20),Position=UDim2.new(0,CARD_M,0,PAD),
+    BackgroundTransparency=1,Text="Tambah World Baru",
+    TextColor3=C.accHi,TextSize=11,Font=Enum.Font.GothamBold,
+    TextXAlignment=Enum.TextXAlignment.Left,Parent=apStep1Frame})
+
+local wNameCard = makeCard(apStep1Frame, PAD+22, ROW_H+10)
+N("TextLabel",{Size=UDim2.new(0,80,0,14),Position=UDim2.new(0,10,0,3),
+    BackgroundTransparency=1,Text="Nama World",
+    TextColor3=C.sub,TextSize=8,Font=Enum.Font.GothamBold,Parent=wNameCard})
+local apWNameBox = N("TextBox",{
+    Size=UDim2.new(1,-20,0,20),Position=UDim2.new(0,10,0,16),
+    BackgroundColor3=C.input,Text="",PlaceholderText="contoh: Heaven Island",
+    TextColor3=C.txt,PlaceholderColor3=C.sub,TextSize=10,Font=Enum.Font.Gotham,
+    ClearTextOnFocus=false,BorderSizePixel=0,Parent=wNameCard})
+CR(4,apWNameBox); ST(C.sep,0.8,apWNameBox)
+
+local apNextBtnCard = makeCard(apStep1Frame, PAD+22+ROW_H+10+6, 30)
+apNextBtnCard.BackgroundColor3 = C.acc
+local apNextLbl = N("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
+    Text="Next  ►",TextColor3=Color3.fromRGB(220,200,255),
+    TextSize=10,Font=Enum.Font.GothamBold,Parent=apNextBtnCard})
+N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=apNextBtnCard}
+).MouseButton1Click:Connect(function()
+    local wn = apWNameBox.Text:match("^%s*(.-)%s*$") or ""
+    if #wn < 1 then return end
+    -- cek duplikat
+    for _,w in ipairs(WORLDS) do
+        if w.name:lower() == wn:lower() then
+            apNextLbl.Text = "⚠ World sudah ada!"
+            task.delay(1.5,function() apNextLbl.Text = "Next  ►" end); return
+        end
+    end
+    apWorldNameVal = wn
+    -- reset enemy data
+    for i=1,6 do
+        apEnemyData[i]={name="",rarity=1}
+        if apEnemyBoxes[i] then apEnemyBoxes[i].Text = "" end
+        if apRarityLbls[i] then
+            apRarityLbls[i].Text = RARITY_NAMES_LIST[1]
+            apRarityLbls[i].TextColor3 = RARITY_COLOR[1]
+        end
+        if apRarityStrips[i] then apRarityStrips[i].BackgroundColor3 = RARITY_COLOR[1] end
+    end
+    apStep2Title.Text = "Enemies: "..wn
+    apStep1Frame.Visible = false; apStep2Frame.Visible = true
+    if apUpdateSubmit then apUpdateSubmit() end
+end)
+
+-- ── STEP 2: Enemy Inputs ──
+apStep2Title = N("TextLabel",{Size=UDim2.new(1,-(CARD_M*2),0,20),Position=UDim2.new(0,CARD_M,0,PAD),
+    BackgroundTransparency=1,Text="Input Enemies",
+    TextColor3=C.accHi,TextSize=11,Font=Enum.Font.GothamBold,
+    TextXAlignment=Enum.TextXAlignment.Left,Parent=apStep2Frame})
+
+local apBackCard = makeCard(apStep2Frame, PAD+22, 24)
+apBackCard.BackgroundColor3 = C.hdr; ST(C.sep,0.8,apBackCard)
+N("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="◄  Back",
+    TextColor3=C.sub,TextSize=9,Font=Enum.Font.GothamBold,Parent=apBackCard})
+N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=apBackCard}
+).MouseButton1Click:Connect(function()
+    apStep2Frame.Visible=false; apStep1Frame.Visible=true
+end)
+
+local AP_ER_H = 38
+local AP_ER_Y0 = PAD+22+24+6
+for i=1,6 do
+    local ey = AP_ER_Y0 + (i-1)*(AP_ER_H+4)
+    local eCard = makeCard(apStep2Frame, ey, AP_ER_H)
+    -- rarity strip
+    local rarStrip = N("Frame",{Size=UDim2.new(0,3,0,22),Position=UDim2.new(0,8,0.5,-11),
+        BackgroundColor3=RARITY_COLOR[1],BorderSizePixel=0,Parent=eCard})
+    CR(2,rarStrip); apRarityStrips[i] = rarStrip
+    -- enemy name box
+    local ebox = N("TextBox",{
+        Size=UDim2.new(1,-110,0,20),Position=UDim2.new(0,18,0,4),
+        BackgroundColor3=C.input,Text="",PlaceholderText="Enemy #"..i,
+        TextColor3=C.txt,PlaceholderColor3=C.sub,TextSize=9,Font=Enum.Font.Gotham,
+        ClearTextOnFocus=false,BorderSizePixel=0,Parent=eCard})
+    CR(4,ebox); ST(C.sep,0.7,ebox)
+    apEnemyBoxes[i] = ebox
+    -- rarity label bawah (kecil)
+    local rarSubLbl = N("TextLabel",{Size=UDim2.new(0,80,0,12),Position=UDim2.new(0,18,0,26),
+        BackgroundTransparency=1,Text=RARITY_NAMES_LIST[1],
+        TextColor3=RARITY_COLOR[1],TextSize=7,Font=Enum.Font.GothamBold,
+        TextXAlignment=Enum.TextXAlignment.Left,Parent=eCard})
+    -- rarity picker box
+    local rarBox = N("Frame",{Size=UDim2.new(0,86,0,20),Position=UDim2.new(1,-92,0.5,-10),
+        BackgroundColor3=C.input,BorderSizePixel=0,Parent=eCard})
+    CR(5,rarBox); ST(C.sep,0.7,rarBox)
+    local rarPickLbl = N("TextLabel",{Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,6,0,0),
+        BackgroundTransparency=1,Text=RARITY_NAMES_LIST[1],
+        TextColor3=RARITY_COLOR[1],TextSize=9,Font=Enum.Font.GothamBold,
+        TextXAlignment=Enum.TextXAlignment.Left,Parent=rarBox})
+    N("TextLabel",{Size=UDim2.new(0,16,1,0),Position=UDim2.new(1,-18,0,0),
+        BackgroundTransparency=1,Text="◀▶",TextColor3=C.sub,TextSize=8,
+        Font=Enum.Font.GothamBold,Parent=rarBox})
+    apRarityLbls[i] = rarPickLbl
+    local idx_i = i
+    N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=rarBox}
+    ).MouseButton1Click:Connect(function()
+        apEnemyData[idx_i].rarity = (apEnemyData[idx_i].rarity % 6) + 1
+        local r = apEnemyData[idx_i].rarity
+        rarPickLbl.Text = RARITY_NAMES_LIST[r]; rarPickLbl.TextColor3 = RARITY_COLOR[r]
+        rarSubLbl.Text  = RARITY_NAMES_LIST[r]; rarSubLbl.TextColor3  = RARITY_COLOR[r]
+        rarStrip.BackgroundColor3 = RARITY_COLOR[r]
+        if apUpdateSubmit then apUpdateSubmit() end
+    end)
+    ebox.Changed:Connect(function(prop)
+        if prop=="Text" then
+            apEnemyData[idx_i].name = ebox.Text:match("^%s*(.-)%s*$") or ""
+            if apUpdateSubmit then apUpdateSubmit() end
+        end
+    end)
+end
+
+-- submit button
+local apSubmitY = AP_ER_Y0 + 6*(AP_ER_H+4) + 8
+apSubmitBtn = makeCard(apStep2Frame, apSubmitY, 32)
+apSubmitBtn.BackgroundColor3 = C.hdr; ST(C.sep,0.8,apSubmitBtn)
+apSubmitLbl = N("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
+    Text="Submit",TextColor3=C.sub,TextSize=11,Font=Enum.Font.GothamBold,Parent=apSubmitBtn})
+N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=apSubmitBtn}
+).MouseButton1Click:Connect(function()
+    local enemies = {}
+    for i=1,6 do
+        local n = apEnemyData[i].name:match("^%s*(.-)%s*$") or ""
+        if #n < 1 then return end
+        table.insert(enemies,{name=n, rarity=apEnemyData[i].rarity, rarityColor=RARITY_COLOR[apEnemyData[i].rarity]})
+    end
+    table.insert(WORLDS,{name=apWorldNameVal, enemies=enemies, custom=true})
+    buildWorldList(); resetEnemies(); buildEnemyList(); doMainLayout()
+    apSubmitLbl.Text = "✓ Berhasil!"; apSubmitLbl.TextColor3 = C.tOn
+    task.delay(0.6,function()
+        adminPanel.Visible=false; main.Visible=true
+        apStep2Frame.Visible=false; apStep1Frame.Visible=true
+        apWNameBox.Text=""
+        for i=1,6 do
+            apEnemyData[i]={name="",rarity=1}
+            if apEnemyBoxes[i] then apEnemyBoxes[i].Text="" end
+            if apRarityLbls[i] then apRarityLbls[i].Text=RARITY_NAMES_LIST[1]; apRarityLbls[i].TextColor3=RARITY_COLOR[1] end
+            if apRarityStrips[i] then apRarityStrips[i].BackgroundColor3=RARITY_COLOR[1] end
+        end
+        task.delay(0.5,function() apSubmitLbl.Text="Submit"; apSubmitLbl.TextColor3=C.sub end)
+    end)
+end)
+
+apUpdateSubmit = function()
+    local allFilled = true
+    for i=1,6 do
+        if #(apEnemyData[i].name:match("^%s*(.-)%s*$") or "") < 1 then allFilled=false; break end
+    end
+    if apSubmitBtn then apSubmitBtn.BackgroundColor3 = allFilled and C.acc or C.hdr end
+    if apSubmitLbl then apSubmitLbl.TextColor3 = allFilled and Color3.fromRGB(220,200,255) or C.sub end
+end
+
+-- toggle handlers
+adminBtn.MouseButton1Click:Connect(function()
+    main.Visible=false; adminPanel.Visible=true
+    apStep1Frame.Visible=true; apStep2Frame.Visible=false
+    apWNameBox.Text=""; apWorldNameVal=""
+end)
+apCloseBtn.MouseButton1Click:Connect(function()
+    adminPanel.Visible=false; main.Visible=true
 end)
 
 -- ════════════════════════════════════════════════════════
