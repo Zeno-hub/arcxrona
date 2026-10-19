@@ -78,6 +78,8 @@ local DIFFICULTY_COLOR = {
 
 -- auto-detect world enemies dari workspace.Server.Enemies.Maps
 -- hasilnya digabung ke WORLDS (append world baru, skip kalau nama sudah ada)
+-- onDone dipanggil setelah selesai, untuk rebuild GUI
+local autoDetectOnDone = nil
 local function autoDetectWorlds()
     local ok, mapsFolder = pcall(function()
         return workspace:WaitForChild("Server",3):WaitForChild("Enemies",3):WaitForChild("Maps",3)
@@ -88,6 +90,7 @@ local function autoDetectWorlds()
     local existing = {}
     for _, w in ipairs(WORLDS) do existing[w.name] = true end
 
+    local added = false
     for _, worldFolder in ipairs(mapsFolder:GetChildren()) do
         local wName = worldFolder.Name
         -- scan descendants untuk BaseParts dengan EnemyName + Difficulty
@@ -118,6 +121,7 @@ local function autoDetectWorlds()
                         for _, e in ipairs(enemies) do
                             if not existEn[e.name] then
                                 table.insert(w.enemies, e)
+                                added = true
                             end
                         end
                         -- re-sort
@@ -127,11 +131,16 @@ local function autoDetectWorlds()
                 end
             else
                 table.insert(WORLDS, {name=wName, enemies=enemies, autoDetected=true})
+                added = true
             end
         end
     end
+
+    -- rebuild GUI world list kalau ada world/enemy baru
+    if added and autoDetectOnDone then
+        autoDetectOnDone()
+    end
 end
-task.spawn(autoDetectWorlds)
 
 -- ── PRIORITY SYSTEM ─────────────────────────────────────────
 local PRIORITY_FEATURES = {"Mob Farm","Dungeon Easy","Trial Easy","Culling Game","World Boss","Bounty","Quest"}
@@ -147,24 +156,12 @@ local priorities = {
 
 -- ── WORLD BOSS ───────────────────────────────────────────────
 local worldBossActive = false
-local wbList = {}      -- {name="Demon Melyode", world="Sins Kingdom"}
+local wbList = {
+    {name = "Demon Melyode", world = "Sins Kingdom"},
+}
 local selectedBoss = 1
 local wbListOpen = false
 local wbItemFrames = {}
-
-local function scanWorldBosses()
-    local ok, wbRoot = pcall(function()
-        return workspace:WaitForChild("Server",3):WaitForChild("WorldBosses",3)
-    end)
-    wbList = {}
-    if not ok or not wbRoot then return end
-    for _, wf in ipairs(wbRoot:GetChildren()) do
-        for _, bf in ipairs(wf:GetChildren()) do
-            table.insert(wbList, {name=bf.Name, world=wf.Name})
-        end
-    end
-end
-task.spawn(scanWorldBosses)
 
 local function detectWorldBoss()
     local wb = wbList[selectedBoss]
@@ -180,6 +177,7 @@ local function detectWorldBoss()
 end
 
 local function worldBossLoop()
+    local lastTpWb = nil
     while worldBossActive and alive() do
         char = lp.Character; if not char then task.wait(1); continue end
         hrp  = char:FindFirstChild("HumanoidRootPart"); if not hrp then task.wait(1); continue end
@@ -187,17 +185,22 @@ local function worldBossLoop()
         local higher = (dungeonRunning and (priorities["Dungeon Easy"] or 1) < wbp)
             or (trialRunning   and (priorities["Trial Easy"]   or 2) < wbp)
             or ((cullingActive or cullingRunning) and (priorities["Culling Game"] or 4) < wbp)
-        if higher then task.wait(1); continue end
-        if not isBossActive() then task.wait(2); continue end
+        if higher then lastTpWb = nil; task.wait(1); continue end
+        if not isBossActive() then lastTpWb = nil; task.wait(2); continue end
+        local wb = wbList[selectedBoss]
+        if not wb then task.wait(1); continue end
+        -- TP ke world dulu kalau belum
+        if lastTpWb ~= wb.world then
+            tpWorld(wb.world); lastTpWb = wb.world; task.wait(3.5)
+            if not worldBossActive or not alive() then break end
+        end
         local boss = detectWorldBoss()
         if boss and not isDead(boss) then
             stickToTarget(boss, function()
                 return worldBossActive and alive() and not isDead(boss)
             end)
         else
-            local wb = wbList[selectedBoss]
-            if wb then tpWorld(wb.world) end
-            task.wait(3)
+            task.wait(1)
         end
     end
 end
@@ -274,7 +277,7 @@ local enabledEnemies = {}
 local function resetEnemies()
     enabledEnemies = {}
     local w = WORLDS[selectedWorld]
-    if w then for i = 1, #w.enemies do enabledEnemies[i] = false end end
+    if w then for i = 1, #w.enemies do enabledEnemies[i] = true end end  -- default semua ON
 end
 resetEnemies()
 
@@ -1180,7 +1183,7 @@ local scrollMain = makeScroll(true)
 tabContents[1]   = scrollMain
 
 -- forward declarations
-local buildEnemyList, doMainLayout
+local buildEnemyList, doMainLayout, buildWorldList
 local worldListOpen = false
 local enemyListOpen = false
 local worldItemFrames = {}
@@ -1213,32 +1216,50 @@ local worldItemsCard = N("Frame",{
 })
 CR(CARD_R, worldItemsCard); ST(C.sep, 0.8, worldItemsCard)
 
-for i,w in ipairs(WORLDS) do
-    local item = N("Frame",{
-        Size=UDim2.new(1,0,0,ITEM_H), Position=UDim2.new(0,0,0,(i-1)*ITEM_H),
-        BackgroundTransparency=1, BorderSizePixel=0, Parent=worldItemsCard,
-    })
-    local wStrip = N("Frame",{Size=UDim2.new(0,2,0,14), Position=UDim2.new(0,8,0.5,-7),
-        BackgroundColor3=i==1 and C.actS or C.sep, BorderSizePixel=0, Parent=item})
-    CR(1, wStrip)
-    local lbl = N("TextLabel",{Size=UDim2.new(1,-22,1,0), Position=UDim2.new(0,18,0,0),
-        BackgroundTransparency=1, Text=w.name,
-        TextColor3=i==1 and C.txt or C.sub,
-        TextSize=10, Font=Enum.Font.Gotham,
-        TextXAlignment=Enum.TextXAlignment.Left, Parent=item})
-    worldItemFrames[i] = {frame=item, label=lbl, strip=wStrip}
-    local idx = i
-    N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=item}
-    ).MouseButton1Click:Connect(function()
-        local old = worldItemFrames[selectedWorld]
-        if old then old.label.TextColor3=C.sub; old.strip.BackgroundColor3=C.sep end
-        selectedWorld = idx
-        lbl.TextColor3 = C.txt; wStrip.BackgroundColor3 = C.actS
-        worldVal.Text  = w.name
-        worldListOpen  = false; worldArrow.Text = "►"
-        resetEnemies(); buildEnemyList(); doMainLayout()
-    end)
+buildWorldList = function()
+    -- clear existing items
+    for _, f in ipairs(worldItemFrames) do
+        if f.frame then f.frame:Destroy() end
+    end
+    worldItemFrames = {}
+    for i,w in ipairs(WORLDS) do
+        local item = N("Frame",{
+            Size=UDim2.new(1,0,0,ITEM_H), Position=UDim2.new(0,0,0,(i-1)*ITEM_H),
+            BackgroundTransparency=1, BorderSizePixel=0, Parent=worldItemsCard,
+        })
+        local isSelected = (i == selectedWorld)
+        local wStrip = N("Frame",{Size=UDim2.new(0,2,0,14), Position=UDim2.new(0,8,0.5,-7),
+            BackgroundColor3=isSelected and C.actS or C.sep, BorderSizePixel=0, Parent=item})
+        CR(1, wStrip)
+        local lbl = N("TextLabel",{Size=UDim2.new(1,-22,1,0), Position=UDim2.new(0,18,0,0),
+            BackgroundTransparency=1, Text=w.name,
+            TextColor3=isSelected and C.txt or C.sub,
+            TextSize=10, Font=Enum.Font.Gotham,
+            TextXAlignment=Enum.TextXAlignment.Left, Parent=item})
+        worldItemFrames[i] = {frame=item, label=lbl, strip=wStrip}
+        local idx = i
+        N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=item}
+        ).MouseButton1Click:Connect(function()
+            local old = worldItemFrames[selectedWorld]
+            if old then old.label.TextColor3=C.sub; old.strip.BackgroundColor3=C.sep end
+            selectedWorld = idx
+            lbl.TextColor3 = C.txt; wStrip.BackgroundColor3 = C.actS
+            worldVal.Text  = w.name
+            worldListOpen  = false; worldArrow.Text = "►"
+            resetEnemies(); buildEnemyList(); doMainLayout()
+        end)
+    end
+    doMainLayout()
 end
+buildWorldList()
+
+-- register callback: kalau autoDetect selesai + ada world baru, rebuild list
+autoDetectOnDone = function()
+    buildWorldList()
+    -- refresh enemy list kalau world yang dipilih sekarang dapat enemy baru
+    resetEnemies(); buildEnemyList(); doMainLayout()
+end
+task.spawn(autoDetectWorlds)
 
 -- Enemy card
 local enemyCard = makeCard(scrollMain, 0, ROW_H)  -- y set by doMainLayout
@@ -1382,14 +1403,12 @@ local function buildWbList()
     wbItemsCard.Size = UDim2.new(1,-(CARD_M*2),0,#wbList*ITEM_H)
 end
 
--- rescan + rebuild saat pertama kali wbItemsCard dibuka
-task.spawn(function()
-    task.wait(5)  -- tunggu scanWorldBosses selesai
-    if #wbList > 0 then
-        local wb = wbList[selectedBoss]
-        if wb then wbVal.Text = wb.name.." - "..wb.world end
-    end
-end)
+-- hardcoded list, langsung build + auto-select boss pertama
+do
+    local wb = wbList[selectedBoss]
+    if wb then wbVal.Text = wb.name.." - "..wb.world end
+    buildWbList()
+end
 
 -- ── PRIORITY TABLE (sortable list) ──────────────────────────
 local PRIO_ROW_H = 26
