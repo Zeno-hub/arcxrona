@@ -1403,11 +1403,10 @@ local function buildWbList()
     wbItemsCard.Size = UDim2.new(1,-(CARD_M*2),0,#wbList*ITEM_H)
 end
 
--- hardcoded list, langsung build + auto-select boss pertama
+-- set label langsung dari hardcoded list (buildWbList dipanggil doMainLayout saat dropdown dibuka)
 do
     local wb = wbList[selectedBoss]
     if wb then wbVal.Text = wb.name.." - "..wb.world end
-    buildWbList()
 end
 
 -- ── PRIORITY TABLE (sortable list) ──────────────────────────
