@@ -1020,6 +1020,14 @@ pcall(function()
     if old then old:Destroy() end
 end)
 
+-- hapus GUI lama supaya ga overlap
+pcall(function()
+    local target = (gethui and gethui()) or lp.PlayerGui
+    for _, v in ipairs(target:GetChildren()) do
+        if v:IsA("ScreenGui") and v.Name == "ArcheronHub" then v:Destroy() end
+    end
+end)
+
 local gui = N("ScreenGui",{
     Name="ArcheronHub", ResetOnSpawn=false,
     ZIndexBehavior=Enum.ZIndexBehavior.Sibling,
