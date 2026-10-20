@@ -930,6 +930,9 @@ local C = {
 }
 
 -- adaptive width so it fits on any mobile screen
+if not workspace.CurrentCamera then
+    workspace:GetPropertyChangedSignal("CurrentCamera"):Wait()
+end
 local vp   = workspace.CurrentCamera.ViewportSize
 local GW   = math.min(460, math.floor(vp.X) - 16)
 
@@ -1271,7 +1274,9 @@ buildWorldList()
 autoDetectOnDone = function()
     buildWorldList()
     -- refresh enemy list kalau world yang dipilih sekarang dapat enemy baru
-    resetEnemies(); buildEnemyList(); doMainLayout()
+    resetEnemies()
+    if buildEnemyList then buildEnemyList() end
+    if doMainLayout then doMainLayout() end
 end
 task.spawn(autoDetectWorlds)
 
@@ -1644,6 +1649,7 @@ buildEnemyList = function()
 end
 
 buildEnemyList(); doMainLayout()
+main.Visible = true  -- pastikan visible setelah layout selesai
 
 -- ════════════════════════════════════════════════════════
 -- TAB 2: GAMEMODE
