@@ -1030,42 +1030,33 @@ end
 -- ════════════════════════════════════════════════════════
 -- SCREEN GUI
 -- ════════════════════════════════════════════════════════
--- cari parent yang paling aman: CoreGui > gethui > PlayerGui
-local function getGuiParent()
-    -- coba CoreGui dulu (paling reliable di Delta)
-    local ok, cg = pcall(function() return game:GetService("CoreGui") end)
-    if ok and cg then return cg end
-    -- fallback gethui
-    if gethui then
-        local ok2, h = pcall(gethui)
-        if ok2 and h then return h end
-    end
-    return lp.PlayerGui
-end
-
-local _guiParent = getGuiParent()
-
--- hapus GUI lama supaya ga overlap
+-- hapus GUI lama supaya ga overlap (cek semua kemungkinan parent)
 pcall(function()
-    for _, v in ipairs(_guiParent:GetChildren()) do
-        if v:IsA("ScreenGui") and v.Name == "ArcheronHub" then v:Destroy() end
+    lp.PlayerGui:FindFirstChild("ArcheronHub") and lp.PlayerGui:FindFirstChild("ArcheronHub"):Destroy()
+end)
+pcall(function()
+    if gethui then
+        local h = gethui()
+        local old = h and h:FindFirstChild("ArcheronHub")
+        if old then old:Destroy() end
     end
 end)
 pcall(function()
-    local old = lp.PlayerGui:FindFirstChild("ArcheronHub")
+    local cg = game:GetService("CoreGui")
+    local old = cg:FindFirstChild("ArcheronHub")
     if old then old:Destroy() end
 end)
 
 local gui = N("ScreenGui",{
     Name="ArcheronHub", ResetOnSpawn=false,
     ZIndexBehavior=Enum.ZIndexBehavior.Sibling,
-    IgnoreGuiInset=true,
-    Parent=_guiParent,
+    Parent=lp.PlayerGui,
 })
 
 local main = N("Frame",{
     Size=UDim2.new(0,GW,0,TOTAL_H),
-    Position=UDim2.new(0.5,-GW/2,0.32,-TOTAL_H/2),
+    -- posisi absolut dari viewport supaya ga salah di mobile
+    Position=UDim2.new(0, math.floor((vp.X - GW)/2), 0, math.floor(vp.Y * 0.28)),
     BackgroundColor3=C.bg, BorderSizePixel=0,
     ClipsDescendants=true, Parent=gui,
 })
