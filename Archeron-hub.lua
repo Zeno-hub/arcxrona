@@ -939,11 +939,14 @@ local C = {
 }
 
 -- adaptive width so it fits on any mobile screen
-if not workspace.CurrentCamera then
-    workspace:GetPropertyChangedSignal("CurrentCamera"):Wait()
+-- robust camera wait: GetPropertyChangedSignal bisa ga fire di Delta mobile
+local _cam = workspace.CurrentCamera
+if not _cam then
+    local t = 0
+    repeat task.wait(0.05); t = t + 0.05; _cam = workspace.CurrentCamera until _cam or t > 5
 end
-local vp   = workspace.CurrentCamera.ViewportSize
-local GW   = math.min(460, math.floor(vp.X) - 16)
+local vp   = _cam and _cam.ViewportSize or Vector2.new(480, 800)  -- fallback buat Delta
+local GW   = math.min(460, math.max(280, math.floor(vp.X) - 16))
 
 local HDR_H    = 40
 local SIDEBAR_W= 84
@@ -1027,23 +1030,37 @@ end
 -- ════════════════════════════════════════════════════════
 -- SCREEN GUI
 -- ════════════════════════════════════════════════════════
+-- cari parent yang paling aman: CoreGui > gethui > PlayerGui
+local function getGuiParent()
+    -- coba CoreGui dulu (paling reliable di Delta)
+    local ok, cg = pcall(function() return game:GetService("CoreGui") end)
+    if ok and cg then return cg end
+    -- fallback gethui
+    if gethui then
+        local ok2, h = pcall(gethui)
+        if ok2 and h then return h end
+    end
+    return lp.PlayerGui
+end
+
+local _guiParent = getGuiParent()
+
+-- hapus GUI lama supaya ga overlap
+pcall(function()
+    for _, v in ipairs(_guiParent:GetChildren()) do
+        if v:IsA("ScreenGui") and v.Name == "ArcheronHub" then v:Destroy() end
+    end
+end)
 pcall(function()
     local old = lp.PlayerGui:FindFirstChild("ArcheronHub")
     if old then old:Destroy() end
 end)
 
--- hapus GUI lama supaya ga overlap
-pcall(function()
-    local target = (gethui and gethui()) or lp.PlayerGui
-    for _, v in ipairs(target:GetChildren()) do
-        if v:IsA("ScreenGui") and v.Name == "ArcheronHub" then v:Destroy() end
-    end
-end)
-
 local gui = N("ScreenGui",{
     Name="ArcheronHub", ResetOnSpawn=false,
     ZIndexBehavior=Enum.ZIndexBehavior.Sibling,
-    Parent=(gethui and gethui()) or lp.PlayerGui,
+    IgnoreGuiInset=true,
+    Parent=_guiParent,
 })
 
 local main = N("Frame",{
