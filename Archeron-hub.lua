@@ -1058,6 +1058,7 @@ end)
 
 local gui = N("ScreenGui",{
     Name="ArcheronHub", ResetOnSpawn=false,
+    IgnoreGuiInset=true,
     ZIndexBehavior=Enum.ZIndexBehavior.Sibling,
     Parent=lp.PlayerGui,
 })
@@ -1065,7 +1066,7 @@ local gui = N("ScreenGui",{
 local main = N("Frame",{
     Size=UDim2.new(0,GW,0,TOTAL_H),
     -- posisi absolut dari viewport supaya ga salah di mobile
-    Position=UDim2.new(0, math.floor((vp.X - GW)/2), 0, math.floor(vp.Y * 0.28)),
+    Position=UDim2.new(0, math.floor((vp.X - GW)/2), 0, 80),
     BackgroundColor3=C.bg, BorderSizePixel=0,
     ClipsDescendants=true, Parent=gui,
 })
