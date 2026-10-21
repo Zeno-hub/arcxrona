@@ -20,9 +20,11 @@ local TweenSvc = game:GetService("TweenService")
 local UIS      = game:GetService("UserInputService")
 local RS       = game:GetService("ReplicatedStorage")
 local lp       = Players.LocalPlayer
+warn("[AH] 1: services ok")
 
 local char = lp.Character or lp.CharacterAdded:Wait()
 local hrp  = char:WaitForChild("HumanoidRootPart")
+warn("[AH] 2: char+hrp ok")
 lp.CharacterAdded:Connect(function(c)
     char = c; hrp = c:WaitForChild("HumanoidRootPart")
 end)
@@ -959,6 +961,7 @@ local CARD_M   = 5
 local CARD_R   = 7
 local PAD      = 4
 
+warn("[AH] 3: font fallbacks ok")
 -- safe font fallbacks for newer Roblox builds (GothamBold/Gotham removed)
 local _ok, _fb = pcall(function() return Enum.Font["GothamBold"] end)
 local FONT_BOLD = _ok and _fb or Enum.Font.SourceSansBold
@@ -1061,6 +1064,7 @@ local gui = N("ScreenGui",{
     IgnoreGuiInset=true,
     ZIndexBehavior=Enum.ZIndexBehavior.Sibling,
     Parent=lp.PlayerGui,
+warn("[AH] 4: ScreenGui created")
 })
 
 local main = N("Frame",{
@@ -1069,6 +1073,7 @@ local main = N("Frame",{
     Position=UDim2.new(0, math.floor((vp.X - GW)/2), 0, 80),
     BackgroundColor3=C.bg, BorderSizePixel=0,
     ClipsDescendants=true, Parent=gui,
+warn("[AH] 5: main frame created")
 })
 CR(10, main); ST(C.sep, 1.2, main)
 local uiScale = N("UIScale",{Scale=1.0, Parent=main})
@@ -1675,13 +1680,16 @@ buildEnemyList = function()
     enemyItemsCard.Size = UDim2.new(1,-(CARD_M*2),0,#enemies*ITEM_H)
 end
 
+warn("[AH] 6: before Visible=true")
 buildEnemyList(); doMainLayout()
 main.Visible = true  -- pastikan visible setelah layout selesai
+warn("[AH] 7: after Visible=true")
 
 -- ════════════════════════════════════════════════════════
 -- TAB 2: GAMEMODE
 -- ════════════════════════════════════════════════════════
 local scrollGM  = makeScroll(false)
+warn("[AH] 8: scrollGM created")
 tabContents[2]  = scrollGM
 
 local function secLabel(parent, y, txt)
@@ -1868,6 +1876,7 @@ gmy = gmy + ROW_H + PAD + 4
 -- TAB 3: SETTINGS
 -- ════════════════════════════════════════════════════════
 local scrollSet = makeScroll(false)
+warn("[AH] 9: scrollSet created")
 tabContents[3]  = scrollSet
 local sy = PAD
 
