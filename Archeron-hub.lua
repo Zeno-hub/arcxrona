@@ -3,8 +3,16 @@
 
 -- kill semua loop dari eksekusi sebelumnya
 if _G.__archeronStop then _G.__archeronStop() end
+task.wait(0.15)  -- beri waktu loop lama beneran stop sebelum re-init
+-- reset loop guards via _G supaya ga nyangkut di executor cache
+_G.__dungLoopLive  = false
+_G.__trialLoopLive = false
 local _SESSION = {}
-_G.__archeronStop = function() _SESSION = nil end
+_G.__archeronStop = function()
+    _SESSION = nil
+    _G.__dungLoopLive  = false
+    _G.__trialLoopLive = false
+end
 local function alive() return _SESSION ~= nil end
 
 local Players  = game:GetService("Players")
@@ -372,8 +380,9 @@ local dungeonRunning   = false
 local trialRunning     = false
 local cullingRunning   = false
 -- loop guards: prevent double-spawn kalau user re-toggle cepat
-local dungLoopLive  = false
-local trialLoopLive = false
+-- pakai _G supaya re-execute selalu mulai dari false, bukan sisa eksekusi lama
+local dungLoopLive  = _G.__dungLoopLive  or false
+local trialLoopLive = _G.__trialLoopLive or false
 local dungeonLeaveRoom = 10
 local trialLeaveWave   = 10
 local cullingLeaveRoom = 10
@@ -591,8 +600,8 @@ local function gamemodeHasEnemies(folderName)
 end
 
 local function dungeonLoop()
-  if dungLoopLive then return end
-  dungLoopLive = true
+  if _G.__dungLoopLive then return end
+  _G.__dungLoopLive = true; dungLoopLive = true
   while dungeonActive and alive() do
     -- kalau session udah buka pas toggle ON, langsung join; kalau belum, tunggu
     if not gamemodeIsOpen("Dungeon Easy") then
@@ -736,7 +745,7 @@ local function dungeonLoop()
     end
     task.wait(3)  -- jeda sebelum nunggu dungeon berikutnya
   end
-  dungLoopLive = false
+  dungLoopLive = false; _G.__dungLoopLive = false
 end
 
 local function getCullingWave()
@@ -801,8 +810,8 @@ local function cullingLoop()
 end
 
 local function trialLoop()
-  if trialLoopLive then return end
-  trialLoopLive = true
+  if _G.__trialLoopLive then return end
+  _G.__trialLoopLive = true; trialLoopLive = true
     local myPrio = function() return priorities["Trial Easy"] or 2 end
 
     local function trialHigherActive()
@@ -896,7 +905,7 @@ local function trialLoop()
     if trialDot then TweenSvc:Create(trialDot,dti,{BackgroundColor3=C.dotY}):Play() end
     task.wait(3)
   end
-  trialLoopLive = false
+  trialLoopLive = false; _G.__trialLoopLive = false
 end
 
 -- ════════════════════════════════════════════════════════
