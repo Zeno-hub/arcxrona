@@ -959,10 +959,19 @@ local CARD_M   = 5
 local CARD_R   = 7
 local PAD      = 4
 
+-- safe font fallbacks for newer Roblox builds (GothamBold/Gotham removed)
+local _ok, _fb = pcall(function() return Enum.Font["GothamBold"] end)
+local FONT_BOLD = _ok and _fb or Enum.Font.SourceSansBold
+local _ok2, _fr = pcall(function() return Enum.Font["Gotham"] end)
+local FONT_REG  = _ok2 and _fr or Enum.Font.SourceSans
+
 local function N(cls, props, parent)
-    local o = Instance.new(cls)
-    for k,v in pairs(props) do o[k] = v end
-    if parent then o.Parent = parent end
+    local ok2, o = pcall(Instance.new, cls)
+    if not ok2 then return Instance.new("Frame") end
+    for k,v in pairs(props) do
+        pcall(function() o[k] = v end)
+    end
+    if parent then pcall(function() o.Parent = parent end) end
     return o
 end
 local function CR(r,p) N("UICorner",{CornerRadius=UDim.new(0,r)},p) end
@@ -1086,12 +1095,12 @@ CR(2, nb2)
 local hdrName1 = N("TextLabel",{Size=UDim2.new(0,90,1,0), Position=UDim2.new(0,24,0,0),
     BackgroundTransparency=1, Text="ARCHERON",
     TextColor3=Color3.fromRGB(235,220,255),
-    TextSize=13, Font=Enum.Font.GothamBold,
+    TextSize=13, Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=hdr})
 local hdrName2 = N("TextLabel",{Size=UDim2.new(0,36,1,0), Position=UDim2.new(0,100,0,0),
     BackgroundTransparency=1, Text="HUB",
     TextColor3=C.acc2,
-    TextSize=13, Font=Enum.Font.GothamBold,
+    TextSize=13, Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=hdr})
 -- badge v2.5
 local vb = N("Frame",{Size=UDim2.new(0,30,0,15), Position=UDim2.new(0,160,0.5,-7.5),
@@ -1099,18 +1108,18 @@ local vb = N("Frame",{Size=UDim2.new(0,30,0,15), Position=UDim2.new(0,160,0.5,-7
 CR(4, vb); ST(C.accHi, 0.6, vb)
 N("TextLabel",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
     Text="v2.5", TextColor3=Color3.fromRGB(200,160,255),
-    TextSize=8, Font=Enum.Font.GothamBold, Parent=vb})
+    TextSize=8, Font=FONT_BOLD, Parent=vb})
 
 local closeBtn = N("TextButton",{
     Size=UDim2.new(0,22,0,22), Position=UDim2.new(1,-28,0.5,-11),
     BackgroundColor3=C.red, Text="×", TextColor3=Color3.fromRGB(255,255,255),
-    TextSize=15, Font=Enum.Font.GothamBold, BorderSizePixel=0, Parent=hdr,
+    TextSize=15, Font=FONT_BOLD, BorderSizePixel=0, Parent=hdr,
 })
 CR(5, closeBtn)
 local adminBtn = N("TextButton",{
     Size=UDim2.new(0,22,0,22), Position=UDim2.new(1,-54,0.5,-11),
     BackgroundColor3=C.acc, Text="⚙", TextColor3=Color3.fromRGB(235,215,255),
-    TextSize=12, Font=Enum.Font.GothamBold, BorderSizePixel=0, Parent=hdr,
+    TextSize=12, Font=FONT_BOLD, BorderSizePixel=0, Parent=hdr,
 })
 CR(5, adminBtn); ST(C.accHi, 0.6, adminBtn)
 makeDrag(hdr, main)
@@ -1163,7 +1172,7 @@ for i, cat in ipairs(CATS) do
         Size=UDim2.new(0,14,1,0), Position=UDim2.new(0,5,0,0),
         BackgroundTransparency=1, Text="|",
         TextColor3=isAct and cat[2] or C.sub,
-        TextSize=12, Font=Enum.Font.GothamBold,
+        TextSize=12, Font=FONT_BOLD,
         Parent=pill,
     })
     -- label
@@ -1171,7 +1180,7 @@ for i, cat in ipairs(CATS) do
         Size=UDim2.new(1,-20,1,0), Position=UDim2.new(0,20,0,0),
         BackgroundTransparency=1, Text=cat[1],
         TextColor3=isAct and C.txt or C.sub,
-        TextSize=9, Font=Enum.Font.GothamBold,
+        TextSize=9, Font=FONT_BOLD,
         TextXAlignment=Enum.TextXAlignment.Left, Parent=pill,
     })
     tabPills[i] = {pill=pill, dot=dotIcon, lbl=lbl, dotCol=cat[2]}
@@ -1226,15 +1235,15 @@ local worldItemFrames = {}
 local worldCard = makeCard(scrollMain, PAD, ROW_H)
 N("TextLabel",{Size=UDim2.new(0,52,1,0), Position=UDim2.new(0,12,0,0),
     BackgroundTransparency=1, Text="World",
-    TextColor3=C.sub, TextSize=10, Font=Enum.Font.GothamBold,
+    TextColor3=C.sub, TextSize=10, Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=worldCard})
 local worldVal = N("TextLabel",{Size=UDim2.new(1,-80,1,0), Position=UDim2.new(0,64,0,0),
     BackgroundTransparency=1, Text=WORLDS[1].name,
-    TextColor3=C.txt, TextSize=10, Font=Enum.Font.Gotham,
+    TextColor3=C.txt, TextSize=10, Font=FONT_REG,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=worldCard})
 local worldArrow = N("TextLabel",{Size=UDim2.new(0,16,1,0), Position=UDim2.new(1,-18,0,0),
     BackgroundTransparency=1, Text="►",
-    TextColor3=C.sub, TextSize=9, Font=Enum.Font.GothamBold, Parent=worldCard})
+    TextColor3=C.sub, TextSize=9, Font=FONT_BOLD, Parent=worldCard})
 N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=worldCard}
 ).MouseButton1Click:Connect(function()
     worldListOpen = not worldListOpen
@@ -1268,7 +1277,7 @@ buildWorldList = function()
         local lbl = N("TextLabel",{Size=UDim2.new(1,-22,1,0), Position=UDim2.new(0,18,0,0),
             BackgroundTransparency=1, Text=w.name,
             TextColor3=isSelected and C.txt or C.sub,
-            TextSize=10, Font=Enum.Font.Gotham,
+            TextSize=10, Font=FONT_REG,
             TextXAlignment=Enum.TextXAlignment.Left, Parent=item})
         worldItemFrames[i] = {frame=item, label=lbl, strip=wStrip}
         local idx = i
@@ -1301,15 +1310,15 @@ task.spawn(autoDetectWorlds)
 local enemyCard = makeCard(scrollMain, 0, ROW_H)  -- y set by doMainLayout
 N("TextLabel",{Size=UDim2.new(0,56,1,0), Position=UDim2.new(0,12,0,0),
     BackgroundTransparency=1, Text="Enemy",
-    TextColor3=C.sub, TextSize=10, Font=Enum.Font.GothamBold,
+    TextColor3=C.sub, TextSize=10, Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=enemyCard})
 local enemyVal = N("TextLabel",{Size=UDim2.new(1,-82,1,0), Position=UDim2.new(0,68,0,0),
     BackgroundTransparency=1, Text="0/0",
-    TextColor3=C.txt, TextSize=10, Font=Enum.Font.Gotham,
+    TextColor3=C.txt, TextSize=10, Font=FONT_REG,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=enemyCard})
 local enemyArrow = N("TextLabel",{Size=UDim2.new(0,16,1,0), Position=UDim2.new(1,-18,0,0),
     BackgroundTransparency=1, Text="►",
-    TextColor3=C.sub, TextSize=9, Font=Enum.Font.GothamBold, Parent=enemyCard})
+    TextColor3=C.sub, TextSize=9, Font=FONT_BOLD, Parent=enemyCard})
 N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=enemyCard}
 ).MouseButton1Click:Connect(function()
     enemyListOpen = not enemyListOpen
@@ -1329,7 +1338,7 @@ local farmCard = makeCard(scrollMain, 0, ROW_H)
 local farmDot = makeStatusDot(farmCard)
 N("TextLabel",{Size=UDim2.new(0,100,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="Auto Farm",
-    TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
+    TextColor3=C.txt, TextSize=10, Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=farmCard})
 local fPill, fKnob = makePill(farmCard, -48)
 local farmState = false
@@ -1352,17 +1361,17 @@ local wbCard = makeCard(scrollMain, 0, ROW_H)
 local wbDot = makeStatusDot(wbCard)
 local wbVal = N("TextLabel",{Size=UDim2.new(1,-100,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="— select boss —",
-    TextColor3=C.sub, TextSize=10, Font=Enum.Font.Gotham,
+    TextColor3=C.sub, TextSize=10, Font=FONT_REG,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=wbCard})
 local wbPill, wbKnob = makePill(wbCard, -48)
 local wbState = false
 local wbArrow = N("TextLabel",{Size=UDim2.new(0,16,1,0), Position=UDim2.new(1,-64,0,0),
     BackgroundTransparency=1, Text="►",
-    TextColor3=C.sub, TextSize=9, Font=Enum.Font.GothamBold, Parent=wbCard})
+    TextColor3=C.sub, TextSize=9, Font=FONT_BOLD, Parent=wbCard})
 -- label kecil "World Boss"
 N("TextLabel",{Size=UDim2.new(0,72,0,12), Position=UDim2.new(0,18,0,2),
     BackgroundTransparency=1, Text="WORLD BOSS",
-    TextColor3=C.sub, TextSize=7, Font=Enum.Font.GothamBold,
+    TextColor3=C.sub, TextSize=7, Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=wbCard})
 -- geser wbVal ke bawah label kecil
 wbVal.Position = UDim2.new(0,12,0,13)
@@ -1407,7 +1416,7 @@ local function buildWbList()
             BackgroundTransparency=1, BorderSizePixel=0, Parent=wbItemsCard})
         N("TextLabel",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
             Text="No boss found", TextColor3=C.sub, TextSize=9,
-            Font=Enum.Font.Gotham, Parent=ph})
+            Font=FONT_REG, Parent=ph})
         wbItemsCard.Size = UDim2.new(1,-(CARD_M*2),0,ITEM_H)
         return
     end
@@ -1421,7 +1430,7 @@ local function buildWbList()
         local lbl = N("TextLabel",{Size=UDim2.new(1,-22,1,0), Position=UDim2.new(0,18,0,0),
             BackgroundTransparency=1, Text=wb.name.." - "..wb.world,
             TextColor3=i==selectedBoss and C.txt or C.sub,
-            TextSize=10, Font=Enum.Font.Gotham,
+            TextSize=10, Font=FONT_REG,
             TextXAlignment=Enum.TextXAlignment.Left, Parent=item})
         wbItemFrames[i] = {frame=item, label=lbl, strip=strip}
         local idx = i
@@ -1467,7 +1476,7 @@ local prioSelected = 1  -- row yang dipilih (1-based rank)
 -- header
 N("TextLabel",{Size=UDim2.new(1,-8,0,PRIO_HDR_H), Position=UDim2.new(0,10,0,0),
     BackgroundTransparency=1, Text="PRIORITY  (1 = top priority)",
-    TextColor3=C.sub, TextSize=8, Font=Enum.Font.GothamBold,
+    TextColor3=C.sub, TextSize=8, Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=prioCard})
 
 -- row frames & labels
@@ -1514,14 +1523,14 @@ for rank = 1, #PRIORITY_FEATURES do
     CR(4, badge)
     local numLbl = N("TextLabel",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
         Text=tostring(rank), TextColor3=C.sub,
-        TextSize=9, Font=Enum.Font.GothamBold, Parent=badge})
+        TextSize=9, Font=FONT_BOLD, Parent=badge})
     prioNumLabels[rank] = numLbl
 
     -- name
     local nameLbl = N("TextLabel",{
         Size=UDim2.new(1,-34,1,0), Position=UDim2.new(0,30,0,0),
         BackgroundTransparency=1, Text=PRIORITY_FEATURES[rank],
-        TextColor3=Color3.fromRGB(160,130,210), TextSize=10, Font=Enum.Font.Gotham,
+        TextColor3=Color3.fromRGB(160,130,210), TextSize=10, Font=FONT_REG,
         TextXAlignment=Enum.TextXAlignment.Left, Parent=rf})
     prioNameLabels[rank] = nameLbl
 
@@ -1544,14 +1553,14 @@ local btnY = PRIO_HDR_H + #PRIORITY_FEATURES * PRIO_ROW_H + 4
 local upBtn = N("TextButton",{
     Size=UDim2.new(0.45,0,0,24), Position=UDim2.new(0.05,0,0,btnY),
     BackgroundColor3=C.acc, Text="▲  UP",
-    TextColor3=Color3.fromRGB(220,200,255), TextSize=10, Font=Enum.Font.GothamBold,
+    TextColor3=Color3.fromRGB(220,200,255), TextSize=10, Font=FONT_BOLD,
     BorderSizePixel=0, Parent=prioCard,
 })
 CR(6, upBtn)
 local dnBtn = N("TextButton",{
     Size=UDim2.new(0.45,0,0,24), Position=UDim2.new(0.5,4,0,btnY),
     BackgroundColor3=C.hdr, Text="▼  DOWN",
-    TextColor3=Color3.fromRGB(180,150,230), TextSize=10, Font=Enum.Font.GothamBold,
+    TextColor3=Color3.fromRGB(180,150,230), TextSize=10, Font=FONT_BOLD,
     BorderSizePixel=0, Parent=prioCard,
 })
 CR(6, dnBtn); ST(C.sep, 0.8, dnBtn)
@@ -1629,7 +1638,7 @@ buildEnemyList = function()
             BackgroundTransparency=1, BorderSizePixel=0, Parent=enemyItemsCard})
         N("TextLabel",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
             Text="No enemies", TextColor3=C.sub, TextSize=9,
-            Font=Enum.Font.Gotham, Parent=ph})
+            Font=FONT_REG, Parent=ph})
         enemyItemsCard.Size = UDim2.new(1,-(CARD_M*2),0,ITEM_H)
         return
     end
@@ -1640,14 +1649,14 @@ buildEnemyList = function()
             BackgroundTransparency=1, BorderSizePixel=0, Parent=enemyItemsCard})
         N("TextLabel",{Size=UDim2.new(0,12,1,0), Position=UDim2.new(0,6,0,0),
             BackgroundTransparency=1, Text="|",
-            TextColor3=C.sub, TextSize=12, Font=Enum.Font.GothamBold, Parent=item})
+            TextColor3=C.sub, TextSize=12, Font=FONT_BOLD, Parent=item})
         local chk = N("Frame",{Size=UDim2.new(0,13,0,13), Position=UDim2.new(0,18,0.5,-6),
             BackgroundColor3=enabledEnemies[i] and C.acc or C.item,
             BorderSizePixel=0, Parent=item})
         CR(3, chk)
         N("TextLabel",{Size=UDim2.new(1,-38,1,0), Position=UDim2.new(0,36,0,0),
             BackgroundTransparency=1, Text=e.name,
-            TextColor3=C.txt, TextSize=10, Font=Enum.Font.Gotham,
+            TextColor3=C.txt, TextSize=10, Font=FONT_REG,
             TextXAlignment=Enum.TextXAlignment.Left, Parent=item})
         local idx = i
         N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=item}
@@ -1678,7 +1687,7 @@ local function secLabel(parent, y, txt)
     N("TextLabel",{
         Size=UDim2.new(1,-(CARD_M*2),0,16), Position=UDim2.new(0,CARD_M,0,y),
         BackgroundTransparency=1, Text=txt,
-        TextColor3=C.sub, TextSize=8, Font=Enum.Font.GothamBold,
+        TextColor3=C.sub, TextSize=8, Font=FONT_BOLD,
         TextXAlignment=Enum.TextXAlignment.Left, Parent=parent,
     })
 end
@@ -1692,7 +1701,7 @@ local function makeNumInput(parent, xRight, defaultVal, minV, maxV, onChange)
     local tb = N("TextBox",{
         Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
         Text=tostring(defaultVal),
-        TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
+        TextColor3=C.txt, TextSize=10, Font=FONT_BOLD,
         ClearTextOnFocus=false, Parent=box,
     })
     tb.FocusLost:Connect(function()
@@ -1713,7 +1722,7 @@ local dungCard = makeCard(scrollGM, gmy, ROW_H)
 local dungDot = makeStatusDot(dungCard)
 N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="Auto Dungeon Easy",
-    TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
+    TextColor3=C.txt, TextSize=10, Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=dungCard})
 local dungPill, dungKnob = makePill(dungCard, -48)
 local dungState = false
@@ -1735,7 +1744,7 @@ gmy = gmy + ROW_H + PAD
 local leaveRoomCard = makeCard(scrollGM, gmy, ROW_H)
 N("TextLabel",{Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,12,0,0),
     BackgroundTransparency=1, Text="Auto leave at room",
-    TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
+    TextColor3=C.sub, TextSize=9, Font=FONT_REG,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=leaveRoomCard})
 makeNumInput(leaveRoomCard, -50, dungeonLeaveRoom, 1, 51, function(v)
     dungeonLeaveRoom = v
@@ -1747,7 +1756,7 @@ local dungCountLabel = N("TextLabel",{
     Size=UDim2.new(1,-(CARD_M*2),0,14),
     Position=UDim2.new(0,CARD_M,0,gmy),
     BackgroundTransparency=1, Text="",
-    TextColor3=C.sub, TextSize=8, Font=Enum.Font.Gotham,
+    TextColor3=C.sub, TextSize=8, Font=FONT_REG,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=scrollGM,
 })
 gmy = gmy + 16 + PAD
@@ -1759,7 +1768,7 @@ local trialCard = makeCard(scrollGM, gmy, ROW_H)
 local trialDot = makeStatusDot(trialCard)
 N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="Auto Trial Easy",
-    TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
+    TextColor3=C.txt, TextSize=10, Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=trialCard})
 local trialPill, trialKnob = makePill(trialCard, -48)
 local trialState = false
@@ -1780,7 +1789,7 @@ gmy = gmy + ROW_H + PAD
 local leaveWaveCard = makeCard(scrollGM, gmy, ROW_H)
 N("TextLabel",{Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,12,0,0),
     BackgroundTransparency=1, Text="Auto leave at wave",
-    TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
+    TextColor3=C.sub, TextSize=9, Font=FONT_REG,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=leaveWaveCard})
 makeNumInput(leaveWaveCard, -50, trialLeaveWave, 1, 51, function(v)
     trialLeaveWave = v
@@ -1792,7 +1801,7 @@ local trialCountLabel = N("TextLabel",{
     Size=UDim2.new(1,-(CARD_M*2),0,14),
     Position=UDim2.new(0,CARD_M,0,gmy),
     BackgroundTransparency=1, Text="",
-    TextColor3=C.sub, TextSize=8, Font=Enum.Font.Gotham,
+    TextColor3=C.sub, TextSize=8, Font=FONT_REG,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=scrollGM,
 })
 gmy = gmy + 16 + PAD + 4
@@ -1804,7 +1813,7 @@ local cullCard = makeCard(scrollGM, gmy, ROW_H)
 local cullDot = makeStatusDot(cullCard)
 N("TextLabel",{Size=UDim2.new(0,160,1,0), Position=UDim2.new(0,18,0,0),
     BackgroundTransparency=1, Text="Auto Culling Game",
-    TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
+    TextColor3=C.txt, TextSize=10, Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=cullCard})
 local cullPill, cullKnob = makePill(cullCard, -48)
 local cullState = false
@@ -1826,16 +1835,16 @@ gmy = gmy + ROW_H + PAD
 local diffCard = makeCard(scrollGM, gmy, ROW_H)
 N("TextLabel",{Size=UDim2.new(0,80,1,0), Position=UDim2.new(0,12,0,0),
     BackgroundTransparency=1, Text="Difficulty",
-    TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
+    TextColor3=C.sub, TextSize=9, Font=FONT_REG,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=diffCard})
 local diffIdx = 1
 local diffVal = N("TextLabel",{Size=UDim2.new(1,-110,1,0), Position=UDim2.new(0,90,0,0),
     BackgroundTransparency=1, Text=CULLING_DIFFS[1],
-    TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
+    TextColor3=C.txt, TextSize=10, Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=diffCard})
 local diffArrows = N("TextLabel",{Size=UDim2.new(0,30,1,0), Position=UDim2.new(1,-34,0,0),
     BackgroundTransparency=1, Text="◀▶",
-    TextColor3=C.sub, TextSize=9, Font=Enum.Font.GothamBold, Parent=diffCard})
+    TextColor3=C.sub, TextSize=9, Font=FONT_BOLD, Parent=diffCard})
 N("TextButton",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1, Text="", Parent=diffCard}
 ).MouseButton1Click:Connect(function()
     diffIdx = (diffIdx % #CULLING_DIFFS) + 1
@@ -1847,7 +1856,7 @@ gmy = gmy + ROW_H + PAD
 local cullLeaveCard = makeCard(scrollGM, gmy, ROW_H)
 N("TextLabel",{Size=UDim2.new(1,-60,1,0), Position=UDim2.new(0,12,0,0),
     BackgroundTransparency=1, Text="Auto leave at wave",
-    TextColor3=C.sub, TextSize=9, Font=Enum.Font.Gotham,
+    TextColor3=C.sub, TextSize=9, Font=FONT_REG,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=cullLeaveCard})
 makeNumInput(cullLeaveCard, -50, cullingLeaveRoom, 1, 51, function(v)
     cullingLeaveRoom = v
@@ -1866,7 +1875,7 @@ local function secSet(txt)
         Size=UDim2.new(1,-(CARD_M*2),0,16),
         Position=UDim2.new(0,CARD_M,0,sy),
         BackgroundTransparency=1, Text=txt,
-        TextColor3=C.txt, TextSize=8, Font=Enum.Font.GothamBold,
+        TextColor3=C.txt, TextSize=8, Font=FONT_BOLD,
         TextXAlignment=Enum.TextXAlignment.Left, Parent=scrollSet,
     })
     sy = sy + 18
@@ -1877,7 +1886,7 @@ secSet("DISPLAY")
 local scaleCard = makeCard(scrollSet, sy, ROW_H)
 N("TextLabel",{Size=UDim2.new(0,100,1,0), Position=UDim2.new(0,12,0,0),
     BackgroundTransparency=1, Text="GUI Scale",
-    TextColor3=C.txt, TextSize=9, Font=Enum.Font.Gotham,
+    TextColor3=C.txt, TextSize=9, Font=FONT_REG,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=scaleCard})
 makeNumInput(scaleCard, -54, 10, 5, 20, function(v)
     uiScale.Scale = v / 10
@@ -1887,7 +1896,7 @@ local scaleHint = makeCard(scrollSet, sy, 22)
 N("TextLabel",{Size=UDim2.new(1,-10,1,0), Position=UDim2.new(0,8,0,0),
     BackgroundTransparency=1,
     Text="Range: 5–20  (default 10 = normal · 13 = larger)",
-    TextColor3=C.sub, TextSize=7, Font=Enum.Font.Gotham,
+    TextColor3=C.sub, TextSize=7, Font=FONT_REG,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=scaleHint})
 sy = sy + 22 + PAD
 
@@ -1898,7 +1907,7 @@ local autoExecConn = nil
 local aeCard = makeCard(scrollSet, sy, ROW_H)
 N("TextLabel",{Size=UDim2.new(0,220,1,0), Position=UDim2.new(0,12,0,0),
     BackgroundTransparency=1, Text="Re-execute on rejoin",
-    TextColor3=C.txt, TextSize=9, Font=Enum.Font.Gotham,
+    TextColor3=C.txt, TextSize=9, Font=FONT_REG,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=aeCard})
 local aePill, aeKnob = makePill(aeCard, -48)
 sy = sy + ROW_H + PAD
@@ -1907,7 +1916,7 @@ local aeHint = makeCard(scrollSet, sy, 22)
 N("TextLabel",{Size=UDim2.new(1,-10,1,0), Position=UDim2.new(0,8,0,0),
     BackgroundTransparency=1,
     Text="Saves & re-runs this script automatically after every rejoin",
-    TextColor3=C.sub, TextSize=7, Font=Enum.Font.Gotham,
+    TextColor3=C.sub, TextSize=7, Font=FONT_REG,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=aeHint})
 sy = sy + 22 + PAD
 
@@ -1972,12 +1981,12 @@ end)
 -- display name
 N("TextLabel",{Size=UDim2.new(0,130,0,14), Position=UDim2.new(0,44,0,7),
     BackgroundTransparency=1, Text=lp.DisplayName,
-    TextColor3=C.txt, TextSize=10, Font=Enum.Font.GothamBold,
+    TextColor3=C.txt, TextSize=10, Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=botBar})
 -- @username sub
 N("TextLabel",{Size=UDim2.new(0,130,0,11), Position=UDim2.new(0,44,0,21),
     BackgroundTransparency=1, Text="@"..lp.Name,
-    TextColor3=C.sub, TextSize=8, Font=Enum.Font.Gotham,
+    TextColor3=C.sub, TextSize=8, Font=FONT_REG,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=botBar})
 
 -- divider line between profile and clock
@@ -1988,7 +1997,7 @@ N("Frame",{Size=UDim2.new(0,1,0,22), Position=UDim2.new(0.5,0,0.5,-11),
 local clockLabel = N("TextLabel",{
     Size=UDim2.new(0.5,-10,1,0), Position=UDim2.new(0.5,6,0,0),
     BackgroundTransparency=1, Text="",
-    TextColor3=Color3.fromRGB(170,130,255), TextSize=10, Font=Enum.Font.GothamBold,
+    TextColor3=Color3.fromRGB(170,130,255), TextSize=10, Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left, Parent=botBar,
 })
 task.spawn(function()
@@ -2036,11 +2045,11 @@ CR(10,apHdr)
 N("Frame",{Size=UDim2.new(1,0,0,10),Position=UDim2.new(0,0,1,-10),BackgroundColor3=C.hdr,BorderSizePixel=0,Parent=apHdr})
 N("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,1,-1),BackgroundColor3=C.acc,BorderSizePixel=0,Parent=apHdr})
 N("TextLabel",{Size=UDim2.new(1,-50,1,0),Position=UDim2.new(0,12,0,0),BackgroundTransparency=1,
-    Text="⚙  ADMIN PANEL",TextColor3=C.accHi,TextSize=12,Font=Enum.Font.GothamBold,
+    Text="⚙  ADMIN PANEL",TextColor3=C.accHi,TextSize=12,Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left,Parent=apHdr})
 local apCloseBtn = N("TextButton",{Size=UDim2.new(0,22,0,22),Position=UDim2.new(1,-28,0.5,-11),
     BackgroundColor3=C.red,Text="×",TextColor3=Color3.fromRGB(255,255,255),
-    TextSize=15,Font=Enum.Font.GothamBold,BorderSizePixel=0,Parent=apHdr})
+    TextSize=15,Font=FONT_BOLD,BorderSizePixel=0,Parent=apHdr})
 CR(5,apCloseBtn)
 makeDrag(apHdr,adminPanel)
 
@@ -2062,17 +2071,17 @@ local apStep2Frame = N("Frame",{Size=UDim2.new(1,0,0,400),Position=UDim2.new(0,0
 -- ── STEP 1: World Name ──
 N("TextLabel",{Size=UDim2.new(1,-(CARD_M*2),0,20),Position=UDim2.new(0,CARD_M,0,PAD),
     BackgroundTransparency=1,Text="Tambah World Baru",
-    TextColor3=C.accHi,TextSize=11,Font=Enum.Font.GothamBold,
+    TextColor3=C.accHi,TextSize=11,Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left,Parent=apStep1Frame})
 
 local wNameCard = makeCard(apStep1Frame, PAD+22, ROW_H+10)
 N("TextLabel",{Size=UDim2.new(0,80,0,14),Position=UDim2.new(0,10,0,3),
     BackgroundTransparency=1,Text="Nama World",
-    TextColor3=C.sub,TextSize=8,Font=Enum.Font.GothamBold,Parent=wNameCard})
+    TextColor3=C.sub,TextSize=8,Font=FONT_BOLD,Parent=wNameCard})
 local apWNameBox = N("TextBox",{
     Size=UDim2.new(1,-20,0,20),Position=UDim2.new(0,10,0,16),
     BackgroundColor3=C.input,Text="",PlaceholderText="contoh: Heaven Island",
-    TextColor3=C.txt,PlaceholderColor3=C.sub,TextSize=10,Font=Enum.Font.Gotham,
+    TextColor3=C.txt,PlaceholderColor3=C.sub,TextSize=10,Font=FONT_REG,
     ClearTextOnFocus=false,BorderSizePixel=0,Parent=wNameCard})
 CR(4,apWNameBox); ST(C.sep,0.8,apWNameBox)
 
@@ -2080,7 +2089,7 @@ local apNextBtnCard = makeCard(apStep1Frame, PAD+22+ROW_H+10+6, 30)
 apNextBtnCard.BackgroundColor3 = C.acc
 local apNextLbl = N("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
     Text="Next  ►",TextColor3=Color3.fromRGB(220,200,255),
-    TextSize=10,Font=Enum.Font.GothamBold,Parent=apNextBtnCard})
+    TextSize=10,Font=FONT_BOLD,Parent=apNextBtnCard})
 N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=apNextBtnCard}
 ).MouseButton1Click:Connect(function()
     local wn = apWNameBox.Text:match("^%s*(.-)%s*$") or ""
@@ -2111,13 +2120,13 @@ end)
 -- ── STEP 2: Enemy Inputs ──
 apStep2Title = N("TextLabel",{Size=UDim2.new(1,-(CARD_M*2),0,20),Position=UDim2.new(0,CARD_M,0,PAD),
     BackgroundTransparency=1,Text="Input Enemies",
-    TextColor3=C.accHi,TextSize=11,Font=Enum.Font.GothamBold,
+    TextColor3=C.accHi,TextSize=11,Font=FONT_BOLD,
     TextXAlignment=Enum.TextXAlignment.Left,Parent=apStep2Frame})
 
 local apBackCard = makeCard(apStep2Frame, PAD+22, 24)
 apBackCard.BackgroundColor3 = C.hdr; ST(C.sep,0.8,apBackCard)
 N("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="◄  Back",
-    TextColor3=C.sub,TextSize=9,Font=Enum.Font.GothamBold,Parent=apBackCard})
+    TextColor3=C.sub,TextSize=9,Font=FONT_BOLD,Parent=apBackCard})
 N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=apBackCard}
 ).MouseButton1Click:Connect(function()
     apStep2Frame.Visible=false; apStep1Frame.Visible=true
@@ -2136,14 +2145,14 @@ for i=1,6 do
     local ebox = N("TextBox",{
         Size=UDim2.new(1,-110,0,20),Position=UDim2.new(0,18,0,4),
         BackgroundColor3=C.input,Text="",PlaceholderText="Enemy #"..i,
-        TextColor3=C.txt,PlaceholderColor3=C.sub,TextSize=9,Font=Enum.Font.Gotham,
+        TextColor3=C.txt,PlaceholderColor3=C.sub,TextSize=9,Font=FONT_REG,
         ClearTextOnFocus=false,BorderSizePixel=0,Parent=eCard})
     CR(4,ebox); ST(C.sep,0.7,ebox)
     apEnemyBoxes[i] = ebox
     -- rarity label bawah (kecil)
     local rarSubLbl = N("TextLabel",{Size=UDim2.new(0,80,0,12),Position=UDim2.new(0,18,0,26),
         BackgroundTransparency=1,Text=RARITY_NAMES_LIST[1],
-        TextColor3=RARITY_COLOR[1],TextSize=7,Font=Enum.Font.GothamBold,
+        TextColor3=RARITY_COLOR[1],TextSize=7,Font=FONT_BOLD,
         TextXAlignment=Enum.TextXAlignment.Left,Parent=eCard})
     -- rarity picker box
     local rarBox = N("Frame",{Size=UDim2.new(0,86,0,20),Position=UDim2.new(1,-92,0.5,-10),
@@ -2151,11 +2160,11 @@ for i=1,6 do
     CR(5,rarBox); ST(C.sep,0.7,rarBox)
     local rarPickLbl = N("TextLabel",{Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,6,0,0),
         BackgroundTransparency=1,Text=RARITY_NAMES_LIST[1],
-        TextColor3=RARITY_COLOR[1],TextSize=9,Font=Enum.Font.GothamBold,
+        TextColor3=RARITY_COLOR[1],TextSize=9,Font=FONT_BOLD,
         TextXAlignment=Enum.TextXAlignment.Left,Parent=rarBox})
     N("TextLabel",{Size=UDim2.new(0,16,1,0),Position=UDim2.new(1,-18,0,0),
         BackgroundTransparency=1,Text="◀▶",TextColor3=C.sub,TextSize=8,
-        Font=Enum.Font.GothamBold,Parent=rarBox})
+        Font=FONT_BOLD,Parent=rarBox})
     apRarityLbls[i] = rarPickLbl
     local idx_i = i
     N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=rarBox}
@@ -2180,7 +2189,7 @@ local apSubmitY = AP_ER_Y0 + 6*(AP_ER_H+4) + 8
 apSubmitBtn = makeCard(apStep2Frame, apSubmitY, 32)
 apSubmitBtn.BackgroundColor3 = C.hdr; ST(C.sep,0.8,apSubmitBtn)
 apSubmitLbl = N("TextLabel",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
-    Text="Submit",TextColor3=C.sub,TextSize=11,Font=Enum.Font.GothamBold,Parent=apSubmitBtn})
+    Text="Submit",TextColor3=C.sub,TextSize=11,Font=FONT_BOLD,Parent=apSubmitBtn})
 N("TextButton",{Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,Text="",Parent=apSubmitBtn}
 ).MouseButton1Click:Connect(function()
     local enemies = {}
@@ -2233,7 +2242,7 @@ local dot = N("Frame",{Size=UDim2.new(0,36,0,36), Position=UDim2.new(0,10,0.5,-1
 CR(8, dot); ST(C.acc, 1.2, dot)
 N("TextLabel",{Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
     Text="✦", TextColor3=Color3.fromRGB(140,80,255),
-    TextSize=16, Font=Enum.Font.GothamBold, Parent=dot})
+    TextSize=16, Font=FONT_BOLD, Parent=dot})
 
 closeBtn.MouseButton1Click:Connect(function() main.Visible=false; dot.Visible=true end)
 
